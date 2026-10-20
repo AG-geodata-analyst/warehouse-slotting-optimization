@@ -217,6 +217,13 @@ def main(end_date_str: str | None = None) -> None:
     out_dir = DATA_DIR / "day"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Keep only files in the current window; delete stale ones.
+    keep = {d.date.isoformat() for d in days}
+    stale = [p for p in out_dir.glob("*.json") if p.stem not in keep]
+    for p in stale:
+        p.unlink()
+        print(f"[generate] removed stale {p.name}")
+
     for day in days:
         path = out_dir / f"{day.date.isoformat()}.json"
         path.write_text(day.model_dump_json(indent=2))
@@ -231,7 +238,6 @@ def main(end_date_str: str | None = None) -> None:
 
     print(f"[generate] wrote {len(days)} day files → {out_dir}")
     print(f"[generate] wrote manifest → {DATA_DIR / 'days.json'}")
-
 
 if __name__ == "__main__":
     import sys
