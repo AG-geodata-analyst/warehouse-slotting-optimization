@@ -4,6 +4,5 @@ __pycache__/
 .env
 .idea/
 .vscode/
-data/day/*.json
-data/days.json
-!data/layout.json
+
+# Everything in data/ is committed — layout, manifest, and every day file
