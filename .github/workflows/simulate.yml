@@ -1,0 +1,64 @@
+name: Simulate warehouse days
+
+on:
+  schedule:
+    # 06:00 UTC every day (08:00 EET / 09:00 EEST)
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      end_date:
+        description: "Override end date (YYYY-MM-DD). Leave blank for today (UTC)."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Verify layout.json matches the generator
+        # Catches accidental manual edits to the committed layout file.
+        run: |
+          python -m warehouse.layout
+          if ! git diff --exit-code data/layout.json; then
+            echo "::error::data/layout.json is out of sync with warehouse/layout.py."
+            echo "::error::Run 'python -m warehouse.layout' locally and commit the result."
+            exit 1
+          fi
+
+      - name: Generate 30-day window
+        run: |
+          if [ -n "${{ inputs.end_date }}" ]; then
+            python -m warehouse.generate "${{ inputs.end_date }}"
+          else
+            python -m warehouse.generate
+          fi
+
+      - name: Commit and push any changes
+        run: |
+          git config user.name  "sim-bot"
+          git config user.email "sim-bot@users.noreply.github.com"
+          git add data/days.json data/day/
+
+          if git diff --cached --quiet; then
+            echo "No changes — the window already matches today's date."
+            exit 0
+          fi
+
+          DAY=$(date -u +%F)
+          git commit -m "chore(sim): rolling window ending ${DAY}"
+          git push
