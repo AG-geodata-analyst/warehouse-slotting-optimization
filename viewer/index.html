@@ -21,19 +21,58 @@
         position: fixed;
         top: 14px;
         left: 14px;
-        background: rgba(0, 0, 0, 0.65);
-        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px 14px;
         border-radius: 4px;
         font-size: 13px;
-        line-height: 1.4;
+        line-height: 1.5;
         pointer-events: none;
+        min-width: 280px;
       }
       #hud strong { color: #7FBF9E; }
+      #day-controls {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.78);
+        padding: 12px 20px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 13px;
+      }
+      #day-controls label {
+        font-weight: 600;
+        color: #7FBF9E;
+      }
+      #day-slider {
+        width: 260px;
+        cursor: pointer;
+      }
+      #day-label {
+        min-width: 100px;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      #day-pallets {
+        min-width: 90px;
+        text-align: right;
+        color: #bbb;
+        font-variant-numeric: tabular-nums;
+      }
     </style>
   </head>
   <body>
     <canvas id="scene"></canvas>
     <div id="hud">Loading…</div>
+    <div id="day-controls" style="display:none">
+      <label for="day-slider">Day</label>
+      <input type="range" id="day-slider" min="0" max="0" value="0" />
+      <span id="day-label">—</span>
+      <span id="day-pallets">— pallets</span>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

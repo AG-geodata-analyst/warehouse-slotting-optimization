@@ -32,3 +32,43 @@ export interface WarehouseLayout {
   racks: Rack[];
 }
 
+export interface Pallet {
+  id: string;
+  sku: string;
+  boxes: number;
+  gross_weight_kg: number;
+  slot_id: string | null;
+}
+
+export interface InboundEvent {
+  event_id: number;
+  time: string;              // "HH:MM:SS"
+  pallets: Pallet[];
+}
+
+export interface OutboundEvent {
+  event_id: number;
+  time: string;
+  pallet_ids: string[];
+}
+
+export interface Day {
+  version: number;
+  date: string;              // "YYYY-MM-DD"
+  seed: number;
+  inbound: InboundEvent[];
+  outbound: OutboundEvent[];
+}
+
+export interface DaysManifest {
+  version: number;
+  genesis: string;
+  end: string;
+  days: string[];            // ordered oldest → newest
+}
+
+export interface Bootstrap {
+  version: number;
+  as_of: string;
+  pallets: Array<Pallet & { slot_id: string }>;   // always has slot_id
+}

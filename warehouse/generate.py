@@ -177,7 +177,7 @@ def generate_window(
     end_date: date,
     window_days: int = WINDOW_DAYS,
     verbose: bool = True,
-) -> list[Day]:
+) -> tuple[list[Day], dict[str, Pallet]]:
     layout = generate_layout()
     slot_to_pallet = _bootstrap(layout)
 
@@ -188,9 +188,14 @@ def generate_window(
 
     window_start = end_date - timedelta(days=window_days - 1)
     days: list[Day] = []
+    bootstrap_state: dict[str, Pallet] | None = None
     cur = GENESIS
 
     while cur <= end_date:
+        # Capture state just BEFORE window_start's events are applied
+        if cur == window_start and bootstrap_state is None:
+            bootstrap_state = dict(slot_to_pallet)
+
         target = _target_occupancy((cur - GENESIS).days)
         day = _simulate_day(cur, slot_to_pallet, layout, target)
         if cur >= window_start:
@@ -207,12 +212,11 @@ def generate_window(
             f"{len(layout.all_slots)}"
         )
 
-    return days
-
+    return days, (bootstrap_state or {})
 
 def main(end_date_str: str | None = None) -> None:
     end_date = date.fromisoformat(end_date_str) if end_date_str else date.today()
-    days = generate_window(end_date)
+    days, bootstrap_state = generate_window(end_date)
 
     out_dir = DATA_DIR / "day"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -234,10 +238,33 @@ def main(end_date_str: str | None = None) -> None:
         "end": end_date.isoformat(),
         "days": [d.date.isoformat() for d in days],
     }
+
     (DATA_DIR / "days.json").write_text(json.dumps(manifest, indent=2))
+
+    # Bootstrap state = warehouse just BEFORE the first day in the window
+    as_of = (end_date - timedelta(days=WINDOW_DAYS)).isoformat()
+    bootstrap = {
+        "version": 1,
+        "as_of": as_of,
+        "pallets": [
+            {
+                "id": p.id,
+                "sku": p.sku,
+                "boxes": p.boxes,
+                "gross_weight_kg": p.gross_weight_kg,
+                "slot_id": slot_id,
+            }
+            for slot_id, p in bootstrap_state.items()
+        ],
+    }
+    (DATA_DIR / "bootstrap.json").write_text(json.dumps(bootstrap, indent=2))
 
     print(f"[generate] wrote {len(days)} day files → {out_dir}")
     print(f"[generate] wrote manifest → {DATA_DIR / 'days.json'}")
+    print(
+        f"[generate] wrote bootstrap ({len(bootstrap_state)} pallets) "
+        f"→ {DATA_DIR / 'bootstrap.json'}"
+    )
 
 if __name__ == "__main__":
     import sys

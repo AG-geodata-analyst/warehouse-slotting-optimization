@@ -1,32 +1,33 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { WarehouseLayout } from './types';
+import type { WarehouseState } from './replay';
 
-// Real-world dimensions in metres (converted from the cm values in models.py)
 const SLOT_WIDTH_M = 1.2;
 const SLOT_DEPTH_M = 1.0;
 const SLOT_HEIGHT_M = 1.6;
-const FLOOR_HEIGHT_M = 5.0;      // vertical spacing between B1 / 1F / 2F
+const FLOOR_HEIGHT_M = 5.0;
 
-// Colour per floor so you can see each one at a glance
 const FLOOR_COLORS: Record<string, number> = {
-  'B1': 0x3b5b7a,
+  B1: 0x3b5b7a,
   '1F': 0x5c9b76,
   '2F': 0x9b7a5c,
 };
+
+const PALLET_COLOR = 0xd68a3a;
 
 export interface SceneHandle {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
+  updatePallets: (state: WarehouseState) => void;
 }
 
 export function createScene(canvas: HTMLCanvasElement): SceneHandle {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = false;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x111111);
@@ -36,7 +37,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
     55,
     window.innerWidth / window.innerHeight,
     0.1,
-    200
+    200,
   );
   camera.position.set(16, 14, 20);
 
@@ -47,7 +48,6 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
   controls.maxPolarAngle = Math.PI * 0.95;
   controls.update();
 
-  // Ambient + directional lighting
   scene.add(new THREE.AmbientLight(0xffffff, 0.55));
   const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
   keyLight.position.set(20, 30, 15);
@@ -56,69 +56,67 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
   fillLight.position.set(-10, 10, -10);
   scene.add(fillLight);
 
-  // Ground plane + grid for spatial reference
-  const groundGeom = new THREE.PlaneGeometry(40, 40);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x0a0a0a,
-    roughness: 1.0,
-  });
-  const ground = new THREE.Mesh(groundGeom, groundMat);
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(40, 40),
+    new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 1.0 }),
+  );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -FLOOR_HEIGHT_M * 1.6;
   scene.add(ground);
 
-  const grid = new THREE.GridHelper(
-    40,
-    40,
-    0x333333,
-    0x1f1f1f
-  );
+  const grid = new THREE.GridHelper(40, 40, 0x333333, 0x1f1f1f);
   grid.position.y = -FLOOR_HEIGHT_M * 1.6 + 0.01;
   scene.add(grid);
 
-  return { renderer, scene, camera, controls };
+  // Pallets will be added by `attachWarehouse`
+  const placeholder = () => {};
+  return {
+    renderer,
+    scene,
+    camera,
+    controls,
+    updatePallets: placeholder,
+  };
 }
 
 /**
- * Build the 3D warehouse from layout.json.
- * Each slot becomes one instance of a single InstancedMesh — one draw call
- * for all 100 boxes, regardless of how many slots the layout has.
+ * Build the warehouse (slots + pallets) and return an `updatePallets`
+ * callback that changes which slots are occupied by pallets.
  */
-export function buildWarehouse(
-  scene: THREE.Scene,
-  layout: WarehouseLayout
+export function attachWarehouse(
+  handle: SceneHandle,
+  layout: WarehouseLayout,
 ): void {
-  const totalSlots = layout.racks.reduce((sum, r) => sum + r.slots.length, 0);
+  const { scene } = handle;
 
-  const geom = new THREE.BoxGeometry(
+  const totalSlots = layout.racks.reduce((n, r) => n + r.slots.length, 0);
+
+  // ─── Slot mesh ──────────────────────────────────────────────────────────
+  const slotGeom = new THREE.BoxGeometry(
     SLOT_WIDTH_M * 0.85,
     SLOT_HEIGHT_M * 0.85,
-    SLOT_DEPTH_M * 0.85
+    SLOT_DEPTH_M * 0.85,
   );
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,      // overridden per-instance
+  const slotMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
     roughness: 0.75,
     metalness: 0.05,
     transparent: true,
-    opacity: 0.72,
+    opacity: 0.55,
   });
-
-  const mesh = new THREE.InstancedMesh(geom, mat, totalSlots);
-  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  mesh.instanceColor = new THREE.InstancedBufferAttribute(
+  const slotMesh = new THREE.InstancedMesh(slotGeom, slotMat, totalSlots);
+  slotMesh.instanceColor = new THREE.InstancedBufferAttribute(
     new Float32Array(totalSlots * 3),
-    3
+    3,
   );
 
   const dummy = new THREE.Object3D();
   const colour = new THREE.Color();
-  let idx = 0;
+  const slotPositions = new Map<string, THREE.Vector3>();
 
-  // Sort floors so that the lowest (B1) is rendered below and 2F above.
-  // layout.floors is ordered ["B1", "1F", "2F"]; we want B1 lowest in Y.
+  let idx = 0;
   for (const rack of layout.racks) {
     const floorIndex = layout.floors.indexOf(rack.floor);
-    // B1 -> -FLOOR_HEIGHT_M, 1F -> 0, 2F -> +FLOOR_HEIGHT_M
     const floorY = (floorIndex - 1) * FLOOR_HEIGHT_M;
 
     for (const slot of rack.slots) {
@@ -128,17 +126,53 @@ export function buildWarehouse(
 
       dummy.position.set(x, y, z);
       dummy.updateMatrix();
-      mesh.setMatrixAt(idx, dummy.matrix);
+      slotMesh.setMatrixAt(idx, dummy.matrix);
 
       colour.setHex(FLOOR_COLORS[rack.floor] ?? 0x666666);
-      mesh.setColorAt(idx, colour);
+      slotMesh.setColorAt(idx, colour);
 
+      slotPositions.set(slot.id, new THREE.Vector3(x, y, z));
       idx++;
     }
   }
+  slotMesh.instanceMatrix.needsUpdate = true;
+  if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
+  scene.add(slotMesh);
 
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  // ─── Pallet mesh ────────────────────────────────────────────────────────
+  const palletGeom = new THREE.BoxGeometry(
+    SLOT_WIDTH_M * 0.70,
+    SLOT_HEIGHT_M * 0.70,
+    SLOT_DEPTH_M * 0.70,
+  );
+  const palletMat = new THREE.MeshStandardMaterial({
+    color: PALLET_COLOR,
+    roughness: 0.85,
+    metalness: 0.0,
+  });
+  const palletMesh = new THREE.InstancedMesh(
+    palletGeom,
+    palletMat,
+    totalSlots,
+  );
+  palletMesh.count = 0;
+  scene.add(palletMesh);
 
-  scene.add(mesh);
+  const palletDummy = new THREE.Object3D();
+
+  const updatePallets = (state: WarehouseState): void => {
+    let n = 0;
+    for (const [slotId] of state.slots) {
+      const pos = slotPositions.get(slotId);
+      if (!pos) continue;
+      palletDummy.position.copy(pos);
+      palletDummy.updateMatrix();
+      palletMesh.setMatrixAt(n, palletDummy.matrix);
+      n++;
+    }
+    palletMesh.count = n;
+    palletMesh.instanceMatrix.needsUpdate = true;
+  };
+
+  handle.updatePallets = updatePallets;
 }
