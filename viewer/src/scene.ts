@@ -14,12 +14,12 @@ const FLOOR_COLORS: Record<string, number> = {
   '2F': 0x9b7a5c,
 };
 
-// Age → colour: cyan (fresh) → green → yellow → orange → red (old).
-const AGE_FULL_DAYS = 30;
-const AGE_FRESH_HUE = 0.55;   // ≈ 198° cyan
-const AGE_OLD_HUE   = 0.00;   // ≈   0° red
-const AGE_SAT       = 0.75;
-const AGE_LIGHT     = 0.55;
+const PALLET_COLOR = 0xd68a3a;
+
+// Three age buckets — tune freely.
+export const AGE_FRESH_MAX_DAYS = 7;    // 0–7d   → ●
+export const AGE_AGING_MAX_DAYS = 14;   // 8–14d  → ▲
+                                         // 15+d   → ✕
 
 const FAST_MOVER_COLOR = 0xffe066;
 
@@ -29,6 +29,58 @@ export interface SceneHandle {
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
   updatePallets: (state: WarehouseState, fastSkus: Set<string>) => void;
+}
+
+function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture {
+  const S = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, S, S);
+
+  if (kind === 'fresh') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(S / 2, S / 2, S / 2 - 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (kind === 'aging') {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 6;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(S / 2, 22);
+    ctx.lineTo(S - 22, S - 28);
+    ctx.lineTo(22, S - 28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    const m = 34;
+    const n = S - 34;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 22;
+    ctx.beginPath();
+    ctx.moveTo(m, m); ctx.lineTo(n, n);
+    ctx.moveTo(n, m); ctx.lineTo(m, n);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(m, m); ctx.lineTo(n, n);
+    ctx.moveTo(n, m); ctx.lineTo(m, n);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
 }
 
 export function createScene(canvas: HTMLCanvasElement): SceneHandle {
@@ -139,30 +191,43 @@ export function attachWarehouse(
   if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
   scene.add(slotMesh);
 
-  // ─── Pallet mesh (age-coloured) ─────────────────────────────────────
+  // ─── Pallet mesh (neutral wood color) ───────────────────────────────
   const palletGeom = new THREE.BoxGeometry(
     SLOT_WIDTH_M * 0.70,
     SLOT_HEIGHT_M * 0.70,
     SLOT_DEPTH_M * 0.70,
   );
   const palletMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff,
+    color: PALLET_COLOR,
     roughness: 0.85,
     metalness: 0.0,
   });
-  const palletMesh = new THREE.InstancedMesh(
-    palletGeom,
-    palletMat,
-    totalSlots,
-  );
-  palletMesh.instanceColor = new THREE.InstancedBufferAttribute(
-    new Float32Array(totalSlots * 3),
-    3,
-  );
+  const palletMesh = new THREE.InstancedMesh(palletGeom, palletMat, totalSlots);
   palletMesh.count = 0;
   scene.add(palletMesh);
 
-  // ─── Fast-mover outline (back-side rim, pulsing) ────────────────────
+  // ─── Symbol planes (three age buckets) ──────────────────────────────
+  const symbolGeom = new THREE.PlaneGeometry(0.35, 0.35);
+  const makeSymbolMesh = (kind: 'fresh' | 'aging' | 'old'): THREE.InstancedMesh => {
+    const tex = makeSymbolTexture(kind);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+    });
+    const mesh = new THREE.InstancedMesh(symbolGeom, mat, totalSlots);
+    mesh.count = 0;
+    mesh.renderOrder = 1;
+    return mesh;
+  };
+  const symbolMeshes: [THREE.InstancedMesh, THREE.InstancedMesh, THREE.InstancedMesh] = [
+    makeSymbolMesh('fresh'),
+    makeSymbolMesh('aging'),
+    makeSymbolMesh('old'),
+  ];
+  scene.add(symbolMeshes[0], symbolMeshes[1], symbolMeshes[2]);
+
+  // ─── Fast-mover outline (unchanged) ─────────────────────────────────
   const outlineScale = 1.12;
   const outlineGeom = new THREE.BoxGeometry(
     SLOT_WIDTH_M * 0.70 * outlineScale,
@@ -188,6 +253,8 @@ export function attachWarehouse(
   scene.add(outlineMesh);
 
   const palletDummy = new THREE.Object3D();
+  const symbolDummy = new THREE.Object3D();
+  const frontZ = (SLOT_DEPTH_M * 0.70) / 2 + 0.005;
 
   const updatePallets = (
     state: WarehouseState,
@@ -195,6 +262,7 @@ export function attachWarehouse(
   ): void => {
     let n = 0;
     let fastN = 0;
+    const symbolCounts: [number, number, number] = [0, 0, 0];
 
     for (const [slotId, pallet] of state.slots) {
       const pos = slotPositions.get(slotId);
@@ -202,26 +270,32 @@ export function attachWarehouse(
 
       palletDummy.position.copy(pos);
       palletDummy.updateMatrix();
+      palletMesh.setMatrixAt(n++, palletDummy.matrix);
 
-      // Pallet matrix + age colour
-      palletMesh.setMatrixAt(n, palletDummy.matrix);
       const age = state.ageDays.get(pallet.id) ?? 0;
-      const t = Math.min(1, age / AGE_FULL_DAYS);
-      const hue = AGE_FRESH_HUE * (1 - t) + AGE_OLD_HUE * t;
-      colour.setHSL(hue, AGE_SAT, AGE_LIGHT);
-      palletMesh.setColorAt(n, colour);
-      n++;
+      const bucket: 0 | 1 | 2 =
+        age <= AGE_FRESH_MAX_DAYS ? 0 : age <= AGE_AGING_MAX_DAYS ? 1 : 2;
 
-      // Fast-mover outline
+      symbolDummy.position.set(pos.x, pos.y, pos.z + frontZ);
+      symbolDummy.rotation.set(0, 0, 0);
+      symbolDummy.updateMatrix();
+      symbolMeshes[bucket].setMatrixAt(
+        symbolCounts[bucket]++,
+        symbolDummy.matrix,
+      );
+
       if (fastSkus.has(pallet.sku)) {
-        outlineMesh.setMatrixAt(fastN, palletDummy.matrix);
-        fastN++;
+        outlineMesh.setMatrixAt(fastN++, palletDummy.matrix);
       }
     }
 
     palletMesh.count = n;
     palletMesh.instanceMatrix.needsUpdate = true;
-    if (palletMesh.instanceColor) palletMesh.instanceColor.needsUpdate = true;
+
+    for (let b = 0; b < 3; b++) {
+      symbolMeshes[b].count = symbolCounts[b];
+      symbolMeshes[b].instanceMatrix.needsUpdate = true;
+    }
 
     outlineMesh.count = fastN;
     outlineMesh.instanceMatrix.needsUpdate = true;

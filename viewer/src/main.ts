@@ -1,4 +1,4 @@
-import { createScene, attachWarehouse } from './scene';
+import { createScene, attachWarehouse, AGE_FRESH_MAX_DAYS, AGE_AGING_MAX_DAYS } from './scene';
 import { loadLayout, loadBootstrap, loadManifest, loadAllDays } from './data';
 import {
   buildTimeline,
@@ -21,20 +21,15 @@ animate();
 
 // ─── HUD legend ────────────────────────────────────────────────────────
 function legendHtml(fastCount: number, windowDays: number): string {
-  const gradient =
-    'linear-gradient(to right,' +
-    'hsl(198,75%,55%) 0%,' +
-    'hsl(158,75%,55%) 20%,' +
-    'hsl(99,75%,55%) 50%,' +
-    'hsl(40,75%,55%) 80%,' +
-    'hsl(0,75%,55%) 100%)';
+  const aging = AGE_FRESH_MAX_DAYS + 1;
+  const old = AGE_AGING_MAX_DAYS + 1;
   return (
     `<div style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px">` +
-    `<div style="font-size:11px;opacity:0.7;margin-bottom:4px">Pallet age (days in window)</div>` +
-    `<div style="display:flex;align-items:center;gap:6px;font-size:10px">` +
-    `<span>0</span>` +
-    `<span style="flex:1;height:6px;border-radius:3px;background:${gradient}"></span>` +
-    `<span>30+</span>` +
+    `<div style="font-size:11px;opacity:0.7;margin-bottom:6px">Pallet age</div>` +
+    `<div style="display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.4">` +
+    `<div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #000;margin-right:8px;vertical-align:middle"></span>Fresh · 0–${AGE_FRESH_MAX_DAYS}d</div>` +
+    `<div><span style="display:inline-block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid #fff;filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);margin-right:8px;vertical-align:middle"></span>Aging · ${aging}–${AGE_AGING_MAX_DAYS}d</div>` +
+    `<div><span style="display:inline-block;font-weight:bold;font-size:14px;line-height:12px;margin-right:8px;vertical-align:middle">✕</span>Old · ${old}d+</div>` +
     `</div>` +
     `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
     `<span style="display:inline-block;width:12px;height:12px;border:2px solid #ffe066;` +
