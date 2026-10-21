@@ -1,6 +1,10 @@
 import { createScene, attachWarehouse } from './scene';
 import { loadLayout, loadBootstrap, loadManifest, loadAllDays } from './data';
-import { buildTimeline, type WarehouseState } from './replay';
+import {
+  buildTimeline,
+  analyzeMovement,
+  type WarehouseState,
+} from './replay';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('canvas#scene not found');
@@ -14,6 +18,33 @@ function animate(): void {
   renderer.render(scene, camera);
 }
 animate();
+
+// ─── HUD legend ────────────────────────────────────────────────────────
+function legendHtml(fastCount: number, windowDays: number): string {
+  const gradient =
+    'linear-gradient(to right,' +
+    'hsl(198,75%,55%) 0%,' +
+    'hsl(158,75%,55%) 20%,' +
+    'hsl(99,75%,55%) 50%,' +
+    'hsl(40,75%,55%) 80%,' +
+    'hsl(0,75%,55%) 100%)';
+  return (
+    `<div style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px">` +
+    `<div style="font-size:11px;opacity:0.7;margin-bottom:4px">Pallet age (days in window)</div>` +
+    `<div style="display:flex;align-items:center;gap:6px;font-size:10px">` +
+    `<span>0</span>` +
+    `<span style="flex:1;height:6px;border-radius:3px;background:${gradient}"></span>` +
+    `<span>30+</span>` +
+    `</div>` +
+    `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
+    `<span style="display:inline-block;width:12px;height:12px;border:2px solid #ffe066;` +
+    `border-radius:2px;margin-right:6px;vertical-align:middle"></span>` +
+    `Fast mover · top ${fastCount} SKU${fastCount === 1 ? '' : 's'} ` +
+    `by ${windowDays}-day outbound` +
+    `</div>` +
+    `</div>`
+  );
+}
 
 async function init(): Promise<void> {
   const hud = document.getElementById('hud');
@@ -40,22 +71,35 @@ async function init(): Promise<void> {
       `as of ${bootstrap.as_of}, ${days.length} days loaded`,
     );
 
-    // Build the static warehouse (slots)
     attachWarehouse(handle, layout);
 
-    // Pre-compute the state at end of every day
-    const timeline: WarehouseState[] = buildTimeline(bootstrap, days);
+    // Baseline age for bootstrap pallets = days between genesis and as_of.
+    const genesisMs = Date.parse(manifest.genesis);
+    const bootstrapMs = Date.parse(bootstrap.as_of);
+    const baselineAge = Number.isFinite(genesisMs) && Number.isFinite(bootstrapMs)
+      ? Math.max(0, Math.round((bootstrapMs - genesisMs) / 86_400_000))
+      : 0;
 
-    // Set up the day slider
+    const timeline: WarehouseState[] = buildTimeline(bootstrap, days, baselineAge);
+
+    const insights = analyzeMovement(bootstrap, days, 14, 5);
+    console.log(
+      `[viewer] fast movers (top ${insights.topN} by ` +
+      `${insights.windowDays}-day outbound): ${insights.topSkus.join(', ')}`,
+    );
+
     if (daySlider) {
       daySlider.min = '0';
       daySlider.max = String(days.length - 1);
-      daySlider.value = String(days.length - 1);   // start at newest day
+      daySlider.value = String(days.length - 1);
     }
 
+    let currentIndex = days.length - 1;
+
     const showDay = (index: number): void => {
+      currentIndex = index;
       const state = timeline[index];
-      handle.updatePallets(state);
+      handle.updatePallets(state, insights.fastSkus);
       if (dayLabel) dayLabel.textContent = days[index].date;
       if (dayPallets) dayPallets.textContent = `${state.slots.size} pallets`;
       if (hud) {
@@ -64,13 +108,47 @@ async function init(): Promise<void> {
           `<strong>Warehouse</strong> · ${layout.floors.length} floors · ` +
           `${layout.racks.length} racks · ${slotCount} slots<br>` +
           `<strong>State</strong> · ${state.slots.size} pallets · ${pct}% occupied<br>` +
-          `<span style="font-size:11px;opacity:0.7">drag to orbit · scroll to zoom · right-drag to pan</span>`;
+          `<span style="font-size:11px;opacity:0.7">drag to orbit · scroll to zoom · right-drag to pan</span>` +
+          legendHtml(insights.topSkus.length, insights.windowDays);
       }
     };
 
     if (dayControls) dayControls.style.display = 'flex';
+
+    // ─── Play / pause button ─────────────────────────────────────────
+    const playBtn = document.createElement('button');
+    playBtn.type = 'button';
+    playBtn.textContent = '▶ Play month';
+    playBtn.style.cssText =
+      'margin-left:8px;padding:4px 10px;border-radius:4px;' +
+      'border:1px solid #555;background:#1e1e1e;color:#eee;' +
+      'font:inherit;cursor:pointer;';
+    dayControls?.appendChild(playBtn);
+
+    let playTimer: number | null = null;
+    const setPlaying = (playing: boolean): void => {
+      if (playing) {
+        playBtn.textContent = '⏸ Pause';
+        if (playTimer !== null) return;
+        playTimer = window.setInterval(() => {
+          if (!daySlider) return;
+          const next = (currentIndex + 1) % days.length;
+          daySlider.value = String(next);
+          showDay(next);
+        }, 700);
+      } else {
+        playBtn.textContent = '▶ Play month';
+        if (playTimer !== null) {
+          window.clearInterval(playTimer);
+          playTimer = null;
+        }
+      }
+    };
+    playBtn.addEventListener('click', () => setPlaying(playTimer === null));
+
     if (daySlider) {
       daySlider.addEventListener('input', () => {
+        setPlaying(false);
         showDay(parseInt(daySlider.value, 10));
       });
     }

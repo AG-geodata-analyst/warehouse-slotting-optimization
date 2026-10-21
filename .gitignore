@@ -11,3 +11,4 @@ __pycache__/
 viewer/node_modules/
 viewer/dist/
 viewer/public/data/
+viewer/tsconfig.tsbuildinfo
