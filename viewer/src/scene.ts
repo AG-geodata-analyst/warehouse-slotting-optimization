@@ -8,20 +8,26 @@ const SLOT_DEPTH_M = 1.0;
 const SLOT_HEIGHT_M = 1.6;
 const FLOOR_HEIGHT_M = 5.0;
 
+const SLOT_BOX_SCALE = 0.85;
+const PALLET_BOX_SCALE = 0.70;
+
+// Base floor colours — used for both the slot mesh and (brightened) pallets.
 const FLOOR_COLORS: Record<string, number> = {
   B1: 0x3b5b7a,
   '1F': 0x5c9b76,
   '2F': 0x9b7a5c,
 };
 
-const PALLET_COLOR = 0xd68a3a;
-
-// Three age buckets — tune freely.
+// Age thresholds — tune freely.
 export const AGE_FRESH_MAX_DAYS = 7;    // 0–7d   → ●
 export const AGE_AGING_MAX_DAYS = 14;   // 8–14d  → ▲
                                          // 15+d   → ✕
 
-const FAST_MOVER_COLOR = 0xffe066;
+const FAST_MOVER_HEX = '#ffe066';
+
+// Symbol size and inset from the slot's corner (metres).
+const SYMBOL_SIZE = 0.42;
+const SYMBOL_INSET = 0.03;
 
 export interface SceneHandle {
   renderer: THREE.WebGLRenderer;
@@ -81,6 +87,31 @@ function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
   return tex;
+}
+
+function makeFrameTexture(): THREE.CanvasTexture {
+  const S = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, S, S);
+  ctx.strokeStyle = FAST_MOVER_HEX;
+  ctx.lineWidth = 22;
+  ctx.strokeRect(11, 11, S - 22, S - 22);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Brighter / more saturated sibling of a base colour. */
+function brighten(base: THREE.Color): THREE.Color {
+  const hsl = { h: 0, s: 0, l: 0 };
+  base.getHSL(hsl);
+  return new THREE.Color().setHSL(
+    hsl.h,
+    Math.min(1, hsl.s * 1.15),
+    Math.min(0.78, hsl.l + 0.22),
+  );
 }
 
 export function createScene(canvas: HTMLCanvasElement): SceneHandle {
@@ -145,9 +176,9 @@ export function attachWarehouse(
 
   // ─── Slot mesh ──────────────────────────────────────────────────────
   const slotGeom = new THREE.BoxGeometry(
-    SLOT_WIDTH_M * 0.85,
-    SLOT_HEIGHT_M * 0.85,
-    SLOT_DEPTH_M * 0.85,
+    SLOT_WIDTH_M * SLOT_BOX_SCALE,
+    SLOT_HEIGHT_M * SLOT_BOX_SCALE,
+    SLOT_DEPTH_M * SLOT_BOX_SCALE,
   );
   const slotMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -163,13 +194,16 @@ export function attachWarehouse(
   );
 
   const dummy = new THREE.Object3D();
-  const colour = new THREE.Color();
   const slotPositions = new Map<string, THREE.Vector3>();
+  // Pre-computed pallet shade for every slot (derived from its floor colour).
+  const slotPalletColors = new Map<string, THREE.Color>();
 
   let idx = 0;
   for (const rack of layout.racks) {
     const floorIndex = layout.floors.indexOf(rack.floor);
     const floorY = (floorIndex - 1) * FLOOR_HEIGHT_M;
+    const baseColour = new THREE.Color(FLOOR_COLORS[rack.floor] ?? 0x666666);
+    const palletColour = brighten(baseColour);
 
     for (const slot of rack.slots) {
       const x = rack.x + (slot.bay - 1) * SLOT_WIDTH_M;
@@ -179,11 +213,10 @@ export function attachWarehouse(
       dummy.position.set(x, y, z);
       dummy.updateMatrix();
       slotMesh.setMatrixAt(idx, dummy.matrix);
-
-      colour.setHex(FLOOR_COLORS[rack.floor] ?? 0x666666);
-      slotMesh.setColorAt(idx, colour);
+      slotMesh.setColorAt(idx, baseColour);
 
       slotPositions.set(slot.id, new THREE.Vector3(x, y, z));
+      slotPalletColors.set(slot.id, palletColour);
       idx++;
     }
   }
@@ -191,23 +224,27 @@ export function attachWarehouse(
   if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
   scene.add(slotMesh);
 
-  // ─── Pallet mesh (neutral wood color) ───────────────────────────────
+  // ─── Pallet mesh (per-slot shade) ───────────────────────────────────
   const palletGeom = new THREE.BoxGeometry(
-    SLOT_WIDTH_M * 0.70,
-    SLOT_HEIGHT_M * 0.70,
-    SLOT_DEPTH_M * 0.70,
+    SLOT_WIDTH_M * PALLET_BOX_SCALE,
+    SLOT_HEIGHT_M * PALLET_BOX_SCALE,
+    SLOT_DEPTH_M * PALLET_BOX_SCALE,
   );
   const palletMat = new THREE.MeshStandardMaterial({
-    color: PALLET_COLOR,
+    color: 0xffffff,
     roughness: 0.85,
     metalness: 0.0,
   });
   const palletMesh = new THREE.InstancedMesh(palletGeom, palletMat, totalSlots);
+  palletMesh.instanceColor = new THREE.InstancedBufferAttribute(
+    new Float32Array(totalSlots * 3),
+    3,
+  );
   palletMesh.count = 0;
   scene.add(palletMesh);
 
-  // ─── Symbol planes (three age buckets) ──────────────────────────────
-  const symbolGeom = new THREE.PlaneGeometry(0.35, 0.35);
+  // ─── Age symbol planes (one per occupied slot, slot's front-top-right) ─
+  const symbolGeom = new THREE.PlaneGeometry(SYMBOL_SIZE, SYMBOL_SIZE);
   const makeSymbolMesh = (kind: 'fresh' | 'aging' | 'old'): THREE.InstancedMesh => {
     const tex = makeSymbolTexture(kind);
     const mat = new THREE.MeshBasicMaterial({
@@ -227,34 +264,35 @@ export function attachWarehouse(
   ];
   scene.add(symbolMeshes[0], symbolMeshes[1], symbolMeshes[2]);
 
-  // ─── Fast-mover outline (unchanged) ─────────────────────────────────
-  const outlineScale = 1.12;
+  // ─── Fast-mover frame (front-side, depth test off → always visible) ─
+  const outlineScale = 1.03;
   const outlineGeom = new THREE.BoxGeometry(
-    SLOT_WIDTH_M * 0.70 * outlineScale,
-    SLOT_HEIGHT_M * 0.70 * outlineScale,
-    SLOT_DEPTH_M * 0.70 * outlineScale,
+    SLOT_WIDTH_M * PALLET_BOX_SCALE * outlineScale,
+    SLOT_HEIGHT_M * PALLET_BOX_SCALE * outlineScale,
+    SLOT_DEPTH_M * PALLET_BOX_SCALE * outlineScale,
   );
   const outlineMat = new THREE.MeshBasicMaterial({
-    color: FAST_MOVER_COLOR,
-    side: THREE.BackSide,
+    map: makeFrameTexture(),
     transparent: true,
-    opacity: 0.85,
+    depthTest: false,
     depthWrite: false,
+    side: THREE.FrontSide,
   });
-  const outlineMesh = new THREE.InstancedMesh(
-    outlineGeom,
-    outlineMat,
-    totalSlots,
-  );
+  const outlineMesh = new THREE.InstancedMesh(outlineGeom, outlineMat, totalSlots);
   outlineMesh.count = 0;
-  outlineMesh.onBeforeRender = () => {
-    outlineMat.opacity = 0.75 + 0.15 * Math.sin(performance.now() * 0.003);
-  };
+  outlineMesh.renderOrder = 5;
   scene.add(outlineMesh);
 
   const palletDummy = new THREE.Object3D();
   const symbolDummy = new THREE.Object3D();
-  const frontZ = (SLOT_DEPTH_M * 0.70) / 2 + 0.005;
+
+  // Corner offsets (relative to slot centre) for the age symbol.
+  const slotHalfW = (SLOT_WIDTH_M * SLOT_BOX_SCALE) / 2;    // 0.51
+  const slotHalfH = (SLOT_HEIGHT_M * SLOT_BOX_SCALE) / 2;   // 0.68
+  const slotHalfD = (SLOT_DEPTH_M * SLOT_BOX_SCALE) / 2;    // 0.425
+  const symX = slotHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;
+  const symY = slotHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
+  const symZ = slotHalfD + 0.008;
 
   const updatePallets = (
     state: WarehouseState,
@@ -268,15 +306,21 @@ export function attachWarehouse(
       const pos = slotPositions.get(slotId);
       if (!pos) continue;
 
+      // Pallet — same shade as slot's floor, opaque
       palletDummy.position.copy(pos);
       palletDummy.updateMatrix();
-      palletMesh.setMatrixAt(n++, palletDummy.matrix);
+      palletMesh.setMatrixAt(n, palletDummy.matrix);
+      const palletColour =
+        slotPalletColors.get(slotId) ?? new THREE.Color(0x888888);
+      palletMesh.setColorAt(n, palletColour);
+      n++;
 
+      // Age symbol — slot's front-top-right corner
       const age = state.ageDays.get(pallet.id) ?? 0;
       const bucket: 0 | 1 | 2 =
         age <= AGE_FRESH_MAX_DAYS ? 0 : age <= AGE_AGING_MAX_DAYS ? 1 : 2;
 
-      symbolDummy.position.set(pos.x, pos.y, pos.z + frontZ);
+      symbolDummy.position.set(pos.x + symX, pos.y + symY, pos.z + symZ);
       symbolDummy.rotation.set(0, 0, 0);
       symbolDummy.updateMatrix();
       symbolMeshes[bucket].setMatrixAt(
@@ -284,6 +328,7 @@ export function attachWarehouse(
         symbolDummy.matrix,
       );
 
+      // Fast mover — frame box hugging the pallet
       if (fastSkus.has(pallet.sku)) {
         outlineMesh.setMatrixAt(fastN++, palletDummy.matrix);
       }
@@ -291,6 +336,7 @@ export function attachWarehouse(
 
     palletMesh.count = n;
     palletMesh.instanceMatrix.needsUpdate = true;
+    if (palletMesh.instanceColor) palletMesh.instanceColor.needsUpdate = true;
 
     for (let b = 0; b < 3; b++) {
       symbolMeshes[b].count = symbolCounts[b];
