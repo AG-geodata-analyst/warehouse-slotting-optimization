@@ -27,8 +27,8 @@ export const AGE_AGING_MAX_DAYS = 14;   // 8–14d  → ▲
 const FAST_MOVER_PALLET = 0xd94a4a;
 
 // Symbol plane geometry.
-const SYMBOL_SIZE = 0.42;
-const SYMBOL_INSET = 0.03;
+const SYMBOL_SIZE = 0.28;
+const SYMBOL_INSET = 0.02;
 const SYMBOL_OPACITY = 0.88;
 
 export interface SceneHandle {
@@ -219,6 +219,7 @@ export function attachWarehouse(
 
   // ─── Age symbol planes (one per occupied slot, front-top-right) ────
   const symbolGeom = new THREE.PlaneGeometry(SYMBOL_SIZE, SYMBOL_SIZE);
+
   const makeSymbolMesh = (kind: 'fresh' | 'aging' | 'old'): THREE.InstancedMesh => {
     const tex = makeSymbolTexture(kind);
     const mat = new THREE.MeshBasicMaterial({
@@ -226,13 +227,19 @@ export function attachWarehouse(
       transparent: true,
       opacity: SYMBOL_OPACITY,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
+
     const mesh = new THREE.InstancedMesh(symbolGeom, mat, totalSlots);
     mesh.count = 0;
     mesh.renderOrder = 1;
     return mesh;
   };
+
   const symbolMeshes: [THREE.InstancedMesh, THREE.InstancedMesh, THREE.InstancedMesh] = [
+
     makeSymbolMesh('fresh'),
     makeSymbolMesh('aging'),
     makeSymbolMesh('old'),
@@ -242,12 +249,17 @@ export function attachWarehouse(
   const palletDummy = new THREE.Object3D();
   const symbolDummy = new THREE.Object3D();
 
-  const slotHalfW = (SLOT_WIDTH_M * SLOT_BOX_SCALE) / 2;
-  const slotHalfH = (SLOT_HEIGHT_M * SLOT_BOX_SCALE) / 2;
-  const slotHalfD = (SLOT_DEPTH_M * SLOT_BOX_SCALE) / 2;
-  const symX = slotHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;
-  const symY = slotHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
-  const symZ = slotHalfD + 0.008;
+  // Symbol is anchored to the PALLET's front-top-right corner (not the slot).
+  
+  const palletHalfW = (SLOT_WIDTH_M * PALLET_BOX_SCALE) / 2;
+  const palletHalfH = (SLOT_HEIGHT_M * PALLET_BOX_SCALE) / 2;
+  
+  const symX = palletHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;
+  const symY = palletHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
+
+  // Must be > slot front face (slotHalfD = 0.425), otherwise the transparent
+  // slot box writes depth and depth-culls the symbol entirely.
+  const symZ = (SLOT_DEPTH_M * SLOT_BOX_SCALE) / 2 + 0.02;   // ≈ 0.445
 
   const fallbackColour = new THREE.Color(0x888888);
   const fastMoverColour = new THREE.Color(FAST_MOVER_PALLET);
