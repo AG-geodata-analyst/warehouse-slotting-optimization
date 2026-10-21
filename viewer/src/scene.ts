@@ -267,6 +267,89 @@ export function attachWarehouse(
   const symY = palletHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
   const symZ = palletHalfD + 0.01;
 
+    // ─── Dispatch origin indicator ─────────────────────────────────────
+  // Matches DISPATCH_X / DISPATCH_Z in slotting.ts — the reference point
+  // every "avg distance" KPI is measured from.
+  const dispatchColour = 0x00e5ff;
+  const groundY = -FLOOR_HEIGHT_M * 1.6 + 0.02;
+
+  // Pulsing ground ring
+  const ringGeom = new THREE.RingGeometry(0.6, 0.9, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: dispatchColour,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.7,
+    depthWrite: false,
+  });
+  const ringMesh = new THREE.Mesh(ringGeom, ringMat);
+  ringMesh.rotation.x = -Math.PI / 2;
+  ringMesh.position.set(0, groundY, 0);
+  ringMesh.renderOrder = 2;
+  ringMesh.onBeforeRender = () => {
+    ringMat.opacity = 0.5 + 0.3 * Math.sin(performance.now() * 0.003);
+  };
+  scene.add(ringMesh);
+
+  // Filled dot at the exact origin
+  const dotGeom = new THREE.CircleGeometry(0.35, 32);
+  const dotMat = new THREE.MeshBasicMaterial({
+    color: dispatchColour,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+  });
+  const dotMesh = new THREE.Mesh(dotGeom, dotMat);
+  dotMesh.rotation.x = -Math.PI / 2;
+  dotMesh.position.set(0, groundY + 0.001, 0);
+  dotMesh.renderOrder = 2;
+  scene.add(dotMesh);
+
+  // Vertical beacon — visible from any orbit angle
+  const BEACON_HEIGHT = 3.0;
+  const beaconGeom = new THREE.CylinderGeometry(0.05, 0.05, BEACON_HEIGHT, 12, 1, true);
+  const beaconMat = new THREE.MeshBasicMaterial({
+    color: dispatchColour,
+    transparent: true,
+    opacity: 0.35,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const beaconMesh = new THREE.Mesh(beaconGeom, beaconMat);
+  beaconMesh.position.set(0, groundY + BEACON_HEIGHT / 2, 0);
+  beaconMesh.renderOrder = 2;
+  scene.add(beaconMesh);
+
+  // "DISPATCH" text sprite — billboards toward camera, depthTest off
+  // so the label is always findable even behind geometry.
+  const labelCanvas = document.createElement('canvas');
+  labelCanvas.width = 512;
+  labelCanvas.height = 128;
+  const lctx = labelCanvas.getContext('2d')!;
+  lctx.clearRect(0, 0, 512, 128);
+  lctx.fillStyle = '#00e5ff';
+  lctx.font = 'bold 64px sans-serif';
+  lctx.textAlign = 'center';
+  lctx.textBaseline = 'middle';
+  lctx.fillText('DISPATCH', 256, 64);
+  const labelTex = new THREE.CanvasTexture(labelCanvas);
+  labelTex.colorSpace = THREE.SRGBColorSpace;
+  labelTex.minFilter = THREE.LinearFilter;
+  labelTex.magFilter = THREE.LinearFilter;
+  const labelMat = new THREE.SpriteMaterial({
+    map: labelTex,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const labelSprite = new THREE.Sprite(labelMat);
+  labelSprite.scale.set(4, 1, 1);
+  labelSprite.position.set(0, groundY + BEACON_HEIGHT + 0.6, 0);
+  labelSprite.renderOrder = 3;
+  scene.add(labelSprite);
+
+  // Pre-built THREE.Color objects (no allocations in the render loop).
+
   // Pre-built THREE.Color objects (no allocations in the render loop).
   const fallbackColour = new THREE.Color(0x888888);
   const fastMoverColour = new THREE.Color(FAST_MOVER_PALLET);
