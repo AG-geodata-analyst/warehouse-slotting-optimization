@@ -1,10 +1,7 @@
 import { createScene, attachWarehouse, AGE_FRESH_MAX_DAYS, AGE_AGING_MAX_DAYS } from './scene';
 import { loadLayout, loadBootstrap, loadManifest, loadAllDays } from './data';
-import {
-  buildTimeline,
-  analyzeMovement,
-  type WarehouseState,
-} from './replay';
+import { buildTimeline, analyzeMovement, type WarehouseState } from './replay';
+import { analyzePlacement, computeSkuVelocity } from './slotting';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('canvas#scene not found');
@@ -19,26 +16,37 @@ function animate(): void {
 }
 animate();
 
-// ─── HUD legend ────────────────────────────────────────────────────────
-function legendHtml(fastCount: number, windowDays: number): string {
+function legendHtml(
+  fastCount: number,
+  windowDays: number,
+  qualityMode: boolean,
+): string {
   const aging = AGE_FRESH_MAX_DAYS + 1;
   const old = AGE_AGING_MAX_DAYS + 1;
-  return (
-    `<div style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px">` +
+
+  const ageBlock =
     `<div style="font-size:11px;opacity:0.7;margin-bottom:6px">Pallet age</div>` +
     `<div style="display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.4">` +
-    `<div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #000;margin-right:8px;vertical-align:middle"></span>Fresh · 0–${AGE_FRESH_MAX_DAYS}d</div>` +
-    `<div><span style="display:inline-block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid #fff;filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);margin-right:8px;vertical-align:middle"></span>Aging · ${aging}–${AGE_AGING_MAX_DAYS}d</div>` +
+    `<div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#fff;margin-right:8px;vertical-align:middle"></span>Fresh · 0–${AGE_FRESH_MAX_DAYS}d</div>` +
+    `<div><span style="display:inline-block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid #fff;margin-right:8px;vertical-align:middle"></span>Aging · ${aging}–${AGE_AGING_MAX_DAYS}d</div>` +
     `<div><span style="display:inline-block;font-weight:bold;font-size:14px;line-height:12px;margin-right:8px;vertical-align:middle">✕</span>Old · ${old}d+</div>` +
-    `</div>` +
-    
-    `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
-    `<span style="display:inline-block;width:12px;height:12px;background:#d94a4a;` +
-    `border-radius:2px;margin-right:6px;vertical-align:middle"></span>` +
-    `Fast mover · top ${fastCount} SKU${fastCount === 1 ? '' : 's'} ` +
-    `by ${windowDays}-day outbound` +
-    `</div>` +
-    
+    `</div>`;
+
+  const footer = qualityMode
+    ? `<div style="margin-top:10px;font-size:11px;opacity:0.7;margin-bottom:6px">Placement quality</div>` +
+      `<div style="display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.4">` +
+      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#4caf50;margin-right:8px;vertical-align:middle"></span>Good · tier matches slot</div>` +
+      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#ffb300;margin-right:8px;vertical-align:middle"></span>Wasted · slow mover in prime slot</div>` +
+      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#e53935;margin-right:8px;vertical-align:middle"></span>Misplaced · fast mover too far out</div>` +
+      `</div>`
+    : `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
+      `<span style="display:inline-block;width:12px;height:12px;background:#d94a4a;border-radius:2px;margin-right:6px;vertical-align:middle"></span>` +
+      `Fast mover · top ${fastCount} SKU${fastCount === 1 ? '' : 's'} by ${windowDays}-day outbound` +
+      `</div>`;
+
+  return (
+    `<div style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px">` +
+    ageBlock + footer +
     `</div>`
   );
 }
@@ -70,7 +78,6 @@ async function init(): Promise<void> {
 
     attachWarehouse(handle, layout);
 
-    // Baseline age for bootstrap pallets = days between genesis and as_of.
     const genesisMs = Date.parse(manifest.genesis);
     const bootstrapMs = Date.parse(bootstrap.as_of);
     const baselineAge = Number.isFinite(genesisMs) && Number.isFinite(bootstrapMs)
@@ -85,6 +92,12 @@ async function init(): Promise<void> {
       `${insights.windowDays}-day outbound): ${insights.topSkus.join(', ')}`,
     );
 
+    // Full-window SKU velocity for ABC tiering.
+    const skuVelocity = computeSkuVelocity(bootstrap, days);
+    console.log(
+      `[viewer] SKU velocity computed for ${skuVelocity.size} SKUs (full ${days.length}-day window)`,
+    );
+
     if (daySlider) {
       daySlider.min = '0';
       daySlider.max = String(days.length - 1);
@@ -92,27 +105,39 @@ async function init(): Promise<void> {
     }
 
     let currentIndex = days.length - 1;
+    let qualityOn = false;
 
     const showDay = (index: number): void => {
       currentIndex = index;
       const state = timeline[index];
-      handle.updatePallets(state, insights.fastSkus);
+      const analysis = qualityOn ? analyzePlacement(state, layout, skuVelocity) : null;
+      handle.updatePallets(state, insights.fastSkus, analysis?.slotQuality ?? null);
+
       if (dayLabel) dayLabel.textContent = days[index].date;
       if (dayPallets) dayPallets.textContent = `${state.slots.size} pallets`;
+
       if (hud) {
         const pct = Math.round((state.slots.size / slotCount) * 100);
+        let qualityKpi = '';
+        if (analysis) {
+          const { aPlacedPct, avgPickDistance, wouldMove } = analysis.kpis;
+          qualityKpi =
+            `<strong>Quality</strong> · ${aPlacedPct.toFixed(0)}% A-placed · ` +
+            `avg ${avgPickDistance.toFixed(1)} m · ${wouldMove} would move<br>`;
+        }
         hud.innerHTML =
           `<strong>Warehouse</strong> · ${layout.floors.length} floors · ` +
           `${layout.racks.length} racks · ${slotCount} slots<br>` +
           `<strong>State</strong> · ${state.slots.size} pallets · ${pct}% occupied<br>` +
+          qualityKpi +
           `<span style="font-size:11px;opacity:0.7">drag to orbit · scroll to zoom · right-drag to pan</span>` +
-          legendHtml(insights.topSkus.length, insights.windowDays);
+          legendHtml(insights.topSkus.length, insights.windowDays, qualityOn);
       }
     };
 
     if (dayControls) dayControls.style.display = 'flex';
 
-    // ─── Play / pause button ─────────────────────────────────────────
+    // ─── Play / pause ────────────────────────────────────────────────
     const playBtn = document.createElement('button');
     playBtn.type = 'button';
     playBtn.textContent = '▶ Play month';
@@ -143,6 +168,24 @@ async function init(): Promise<void> {
     };
     playBtn.addEventListener('click', () => setPlaying(playTimer === null));
 
+    // ─── Quality toggle ──────────────────────────────────────────────
+    const qualityBtn = document.createElement('button');
+    qualityBtn.type = 'button';
+    qualityBtn.textContent = 'Quality: Off';
+    qualityBtn.style.cssText =
+      'margin-left:8px;padding:4px 10px;border-radius:4px;' +
+      'border:1px solid #555;background:#1e1e1e;color:#eee;' +
+      'font:inherit;cursor:pointer;';
+    dayControls?.appendChild(qualityBtn);
+
+    qualityBtn.addEventListener('click', () => {
+      qualityOn = !qualityOn;
+      qualityBtn.textContent = `Quality: ${qualityOn ? 'On' : 'Off'}`;
+      qualityBtn.style.background = qualityOn ? '#2e4a2e' : '#1e1e1e';
+      qualityBtn.style.borderColor = qualityOn ? '#4caf50' : '#555';
+      showDay(currentIndex);
+    });
+
     if (daySlider) {
       daySlider.addEventListener('input', () => {
         setPlaying(false);
@@ -150,7 +193,6 @@ async function init(): Promise<void> {
       });
     }
 
-    // Initial render at newest day
     showDay(days.length - 1);
   } catch (err) {
     console.error(err);

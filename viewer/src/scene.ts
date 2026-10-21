@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { WarehouseLayout } from './types';
 import type { WarehouseState } from './replay';
+import type { Quality } from './slotting';
 
 const SLOT_WIDTH_M = 1.2;
 const SLOT_DEPTH_M = 1.0;
@@ -19,12 +20,18 @@ const FLOOR_COLORS: Record<string, number> = {
 };
 
 // Age thresholds — tune freely.
-export const AGE_FRESH_MAX_DAYS = 7;    // 0–7d   → ●
-export const AGE_AGING_MAX_DAYS = 14;   // 8–14d  → ▲
-                                         // 15+d   → ✕
+export const AGE_FRESH_MAX_DAYS = 7;
+export const AGE_AGING_MAX_DAYS = 14;
 
-// Fast-mover pallet tint.
+// Fast-mover pallet tint (only used when quality mode is OFF).
 const FAST_MOVER_PALLET = 0xd94a4a;
+
+// Placement-quality pallet tints (only used when quality mode is ON).
+const QUALITY_COLOURS: Record<Quality, number> = {
+  good: 0x4caf50,
+  misplaced: 0xe53935,
+  wasted: 0xffb300,
+};
 
 // Symbol plane geometry.
 const SYMBOL_SIZE = 0.28;
@@ -36,7 +43,11 @@ export interface SceneHandle {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
-  updatePallets: (state: WarehouseState, fastSkus: Set<string>) => void;
+  updatePallets: (
+    state: WarehouseState,
+    fastSkus: Set<string>,
+    qualityMode?: Map<string, Quality> | null,
+  ) => void;
 }
 
 function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture {
@@ -78,7 +89,6 @@ function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture
   return tex;
 }
 
-/** Brighter / more saturated sibling of a base colour. */
 function brighten(base: THREE.Color): THREE.Color {
   const hsl = { h: 0, s: 0, l: 0 };
   base.getHSL(hsl);
@@ -161,7 +171,7 @@ export function attachWarehouse(
     metalness: 0.05,
     transparent: true,
     opacity: 0.55,
-    depthWrite: false, 
+    depthWrite: false,
   });
   const slotMesh = new THREE.InstancedMesh(slotGeom, slotMat, totalSlots);
   slotMesh.instanceColor = new THREE.InstancedBufferAttribute(
@@ -199,7 +209,7 @@ export function attachWarehouse(
   if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
   scene.add(slotMesh);
 
-  // ─── Pallet mesh (per-slot shade, or red for fast movers) ──────────
+  // ─── Pallet mesh ────────────────────────────────────────────────────
   const palletGeom = new THREE.BoxGeometry(
     SLOT_WIDTH_M * PALLET_BOX_SCALE,
     SLOT_HEIGHT_M * PALLET_BOX_SCALE,
@@ -218,7 +228,7 @@ export function attachWarehouse(
   palletMesh.count = 0;
   scene.add(palletMesh);
 
-  // ─── Age symbol planes (one per occupied slot, front-top-right) ────
+  // ─── Age symbol planes ─────────────────────────────────────────────
   const symbolGeom = new THREE.PlaneGeometry(SYMBOL_SIZE, SYMBOL_SIZE);
 
   const makeSymbolMesh = (kind: 'fresh' | 'aging' | 'old'): THREE.InstancedMesh => {
@@ -240,7 +250,6 @@ export function attachWarehouse(
   };
 
   const symbolMeshes: [THREE.InstancedMesh, THREE.InstancedMesh, THREE.InstancedMesh] = [
-
     makeSymbolMesh('fresh'),
     makeSymbolMesh('aging'),
     makeSymbolMesh('old'),
@@ -253,22 +262,24 @@ export function attachWarehouse(
   // Symbol is anchored to the PALLET's front-top-right corner.
   const palletHalfW = (SLOT_WIDTH_M * PALLET_BOX_SCALE) / 2;
   const palletHalfH = (SLOT_HEIGHT_M * PALLET_BOX_SCALE) / 2;
-  const palletHalfD = (SLOT_DEPTH_M * PALLET_BOX_SCALE) / 2;   // ≈ 0.35
-  const symX = palletHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;   // ≈ 0.26
-  const symY = palletHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;   // ≈ 0.40
+  const palletHalfD = (SLOT_DEPTH_M * PALLET_BOX_SCALE) / 2;
+  const symX = palletHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;
+  const symY = palletHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
+  const symZ = palletHalfD + 0.01;
 
-  // 1 cm proud of the pallet face — near-flush, no visible parallax.
-  // slotMat has depthWrite:false, so the slot front face cannot occlude
-  // this; polygonOffset on the symbol material defeats the pallet's own
-  // depth write at this tiny gap.
-  const symZ = palletHalfD + 0.01;                             // ≈ 0.36
-
+  // Pre-built THREE.Color objects (no allocations in the render loop).
   const fallbackColour = new THREE.Color(0x888888);
   const fastMoverColour = new THREE.Color(FAST_MOVER_PALLET);
+  const qualityColours: Record<Quality, THREE.Color> = {
+    good: new THREE.Color(QUALITY_COLOURS.good),
+    misplaced: new THREE.Color(QUALITY_COLOURS.misplaced),
+    wasted: new THREE.Color(QUALITY_COLOURS.wasted),
+  };
 
   const updatePallets = (
     state: WarehouseState,
     fastSkus: Set<string>,
+    qualityMode: Map<string, Quality> | null = null,
   ): void => {
     let n = 0;
     const symbolCounts: [number, number, number] = [0, 0, 0];
@@ -281,9 +292,15 @@ export function attachWarehouse(
       palletDummy.updateMatrix();
       palletMesh.setMatrixAt(n, palletDummy.matrix);
 
-      const colour = fastSkus.has(pallet.sku)
-        ? fastMoverColour
-        : (slotPalletColors.get(slotId) ?? fallbackColour);
+      let colour: THREE.Color;
+      if (qualityMode) {
+        const q = qualityMode.get(slotId);
+        colour = q ? qualityColours[q] : fallbackColour;
+      } else if (fastSkus.has(pallet.sku)) {
+        colour = fastMoverColour;
+      } else {
+        colour = slotPalletColors.get(slotId) ?? fallbackColour;
+      }
       palletMesh.setColorAt(n, colour);
       n++;
 
