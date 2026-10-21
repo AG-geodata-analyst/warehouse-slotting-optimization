@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "sync-data": "rm -rf public/data && cp -r ../data public/data",
+    "sync-data": "rm -rf public/data && mkdir -p public && cp -r ../data public/data",
     "dev": "npm run sync-data && vite",
     "build": "npm run sync-data && tsc -b && vite build",
     "preview": "vite preview"
