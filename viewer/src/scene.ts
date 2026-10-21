@@ -161,6 +161,7 @@ export function attachWarehouse(
     metalness: 0.05,
     transparent: true,
     opacity: 0.55,
+    depthWrite: false, 
   });
   const slotMesh = new THREE.InstancedMesh(slotGeom, slotMat, totalSlots);
   slotMesh.instanceColor = new THREE.InstancedBufferAttribute(
@@ -249,17 +250,18 @@ export function attachWarehouse(
   const palletDummy = new THREE.Object3D();
   const symbolDummy = new THREE.Object3D();
 
-  // Symbol is anchored to the PALLET's front-top-right corner (not the slot).
-  
+  // Symbol is anchored to the PALLET's front-top-right corner.
   const palletHalfW = (SLOT_WIDTH_M * PALLET_BOX_SCALE) / 2;
   const palletHalfH = (SLOT_HEIGHT_M * PALLET_BOX_SCALE) / 2;
-  
-  const symX = palletHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;
-  const symY = palletHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
+  const palletHalfD = (SLOT_DEPTH_M * PALLET_BOX_SCALE) / 2;   // ≈ 0.35
+  const symX = palletHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;   // ≈ 0.26
+  const symY = palletHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;   // ≈ 0.40
 
-  // Must be > slot front face (slotHalfD = 0.425), otherwise the transparent
-  // slot box writes depth and depth-culls the symbol entirely.
-  const symZ = (SLOT_DEPTH_M * SLOT_BOX_SCALE) / 2 + 0.02;   // ≈ 0.445
+  // 1 cm proud of the pallet face — near-flush, no visible parallax.
+  // slotMat has depthWrite:false, so the slot front face cannot occlude
+  // this; polygonOffset on the symbol material defeats the pallet's own
+  // depth write at this tiny gap.
+  const symZ = palletHalfD + 0.01;                             // ≈ 0.36
 
   const fallbackColour = new THREE.Color(0x888888);
   const fastMoverColour = new THREE.Color(FAST_MOVER_PALLET);
