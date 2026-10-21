@@ -114,10 +114,11 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
     0.1,
     200,
   );
-  camera.position.set(16, 14, 20);
+  camera.position.set(-12, 14, 22);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(5, 0, 5);
+  
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI * 0.95;
