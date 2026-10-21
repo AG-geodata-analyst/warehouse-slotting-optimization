@@ -31,12 +31,14 @@ function legendHtml(fastCount: number, windowDays: number): string {
     `<div><span style="display:inline-block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid #fff;filter:drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);margin-right:8px;vertical-align:middle"></span>Aging · ${aging}–${AGE_AGING_MAX_DAYS}d</div>` +
     `<div><span style="display:inline-block;font-weight:bold;font-size:14px;line-height:12px;margin-right:8px;vertical-align:middle">✕</span>Old · ${old}d+</div>` +
     `</div>` +
+    
     `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
-    `<span style="display:inline-block;width:12px;height:12px;border:2px solid #ffe066;` +
+    `<span style="display:inline-block;width:12px;height:12px;background:#d94a4a;` +
     `border-radius:2px;margin-right:6px;vertical-align:middle"></span>` +
     `Fast mover · top ${fastCount} SKU${fastCount === 1 ? '' : 's'} ` +
     `by ${windowDays}-day outbound` +
     `</div>` +
+    
     `</div>`
   );
 }

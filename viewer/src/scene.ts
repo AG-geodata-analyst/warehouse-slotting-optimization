@@ -11,7 +11,7 @@ const FLOOR_HEIGHT_M = 5.0;
 const SLOT_BOX_SCALE = 0.85;
 const PALLET_BOX_SCALE = 0.70;
 
-// Base floor colours — used for both the slot mesh and (brightened) pallets.
+// Base floor colours — slot mesh uses these directly; pallets use brightened siblings.
 const FLOOR_COLORS: Record<string, number> = {
   B1: 0x3b5b7a,
   '1F': 0x5c9b76,
@@ -23,11 +23,13 @@ export const AGE_FRESH_MAX_DAYS = 7;    // 0–7d   → ●
 export const AGE_AGING_MAX_DAYS = 14;   // 8–14d  → ▲
                                          // 15+d   → ✕
 
-const FAST_MOVER_HEX = '#ffe066';
+// Fast-mover pallet tint.
+const FAST_MOVER_PALLET = 0xd94a4a;
 
-// Symbol size and inset from the slot's corner (metres).
+// Symbol plane geometry.
 const SYMBOL_SIZE = 0.42;
 const SYMBOL_INSET = 0.03;
+const SYMBOL_OPACITY = 0.88;
 
 export interface SceneHandle {
   renderer: THREE.WebGLRenderer;
@@ -43,39 +45,26 @@ function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, S, S);
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#ffffff';
 
   if (kind === 'fresh') {
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 6;
     ctx.beginPath();
-    ctx.arc(S / 2, S / 2, S / 2 - 22, 0, Math.PI * 2);
+    ctx.arc(S / 2, S / 2, S / 2 - 18, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
   } else if (kind === 'aging') {
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 6;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(S / 2, 22);
-    ctx.lineTo(S - 22, S - 28);
-    ctx.lineTo(22, S - 28);
+    ctx.moveTo(S / 2, 20);
+    ctx.lineTo(S - 20, S - 24);
+    ctx.lineTo(20, S - 24);
     ctx.closePath();
     ctx.fill();
-    ctx.stroke();
   } else {
-    const m = 34;
-    const n = S - 34;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 22;
-    ctx.beginPath();
-    ctx.moveTo(m, m); ctx.lineTo(n, n);
-    ctx.moveTo(n, m); ctx.lineTo(m, n);
-    ctx.stroke();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 14;
+    ctx.lineWidth = 18;
+    const m = 32;
+    const n = S - 32;
     ctx.beginPath();
     ctx.moveTo(m, m); ctx.lineTo(n, n);
     ctx.moveTo(n, m); ctx.lineTo(m, n);
@@ -86,20 +75,6 @@ function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
-  return tex;
-}
-
-function makeFrameTexture(): THREE.CanvasTexture {
-  const S = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = S;
-  const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, S, S);
-  ctx.strokeStyle = FAST_MOVER_HEX;
-  ctx.lineWidth = 22;
-  ctx.strokeRect(11, 11, S - 22, S - 22);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
@@ -195,7 +170,6 @@ export function attachWarehouse(
 
   const dummy = new THREE.Object3D();
   const slotPositions = new Map<string, THREE.Vector3>();
-  // Pre-computed pallet shade for every slot (derived from its floor colour).
   const slotPalletColors = new Map<string, THREE.Color>();
 
   let idx = 0;
@@ -224,7 +198,7 @@ export function attachWarehouse(
   if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
   scene.add(slotMesh);
 
-  // ─── Pallet mesh (per-slot shade) ───────────────────────────────────
+  // ─── Pallet mesh (per-slot shade, or red for fast movers) ──────────
   const palletGeom = new THREE.BoxGeometry(
     SLOT_WIDTH_M * PALLET_BOX_SCALE,
     SLOT_HEIGHT_M * PALLET_BOX_SCALE,
@@ -243,13 +217,14 @@ export function attachWarehouse(
   palletMesh.count = 0;
   scene.add(palletMesh);
 
-  // ─── Age symbol planes (one per occupied slot, slot's front-top-right) ─
+  // ─── Age symbol planes (one per occupied slot, front-top-right) ────
   const symbolGeom = new THREE.PlaneGeometry(SYMBOL_SIZE, SYMBOL_SIZE);
   const makeSymbolMesh = (kind: 'fresh' | 'aging' | 'old'): THREE.InstancedMesh => {
     const tex = makeSymbolTexture(kind);
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
+      opacity: SYMBOL_OPACITY,
       depthWrite: false,
     });
     const mesh = new THREE.InstancedMesh(symbolGeom, mat, totalSlots);
@@ -264,58 +239,40 @@ export function attachWarehouse(
   ];
   scene.add(symbolMeshes[0], symbolMeshes[1], symbolMeshes[2]);
 
-  // ─── Fast-mover frame (front-side, depth test off → always visible) ─
-  const outlineScale = 1.03;
-  const outlineGeom = new THREE.BoxGeometry(
-    SLOT_WIDTH_M * PALLET_BOX_SCALE * outlineScale,
-    SLOT_HEIGHT_M * PALLET_BOX_SCALE * outlineScale,
-    SLOT_DEPTH_M * PALLET_BOX_SCALE * outlineScale,
-  );
-  const outlineMat = new THREE.MeshBasicMaterial({
-    map: makeFrameTexture(),
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    side: THREE.FrontSide,
-  });
-  const outlineMesh = new THREE.InstancedMesh(outlineGeom, outlineMat, totalSlots);
-  outlineMesh.count = 0;
-  outlineMesh.renderOrder = 5;
-  scene.add(outlineMesh);
-
   const palletDummy = new THREE.Object3D();
   const symbolDummy = new THREE.Object3D();
 
-  // Corner offsets (relative to slot centre) for the age symbol.
-  const slotHalfW = (SLOT_WIDTH_M * SLOT_BOX_SCALE) / 2;    // 0.51
-  const slotHalfH = (SLOT_HEIGHT_M * SLOT_BOX_SCALE) / 2;   // 0.68
-  const slotHalfD = (SLOT_DEPTH_M * SLOT_BOX_SCALE) / 2;    // 0.425
+  const slotHalfW = (SLOT_WIDTH_M * SLOT_BOX_SCALE) / 2;
+  const slotHalfH = (SLOT_HEIGHT_M * SLOT_BOX_SCALE) / 2;
+  const slotHalfD = (SLOT_DEPTH_M * SLOT_BOX_SCALE) / 2;
   const symX = slotHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;
   const symY = slotHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
   const symZ = slotHalfD + 0.008;
+
+  const fallbackColour = new THREE.Color(0x888888);
+  const fastMoverColour = new THREE.Color(FAST_MOVER_PALLET);
 
   const updatePallets = (
     state: WarehouseState,
     fastSkus: Set<string>,
   ): void => {
     let n = 0;
-    let fastN = 0;
     const symbolCounts: [number, number, number] = [0, 0, 0];
 
     for (const [slotId, pallet] of state.slots) {
       const pos = slotPositions.get(slotId);
       if (!pos) continue;
 
-      // Pallet — same shade as slot's floor, opaque
       palletDummy.position.copy(pos);
       palletDummy.updateMatrix();
       palletMesh.setMatrixAt(n, palletDummy.matrix);
-      const palletColour =
-        slotPalletColors.get(slotId) ?? new THREE.Color(0x888888);
-      palletMesh.setColorAt(n, palletColour);
+
+      const colour = fastSkus.has(pallet.sku)
+        ? fastMoverColour
+        : (slotPalletColors.get(slotId) ?? fallbackColour);
+      palletMesh.setColorAt(n, colour);
       n++;
 
-      // Age symbol — slot's front-top-right corner
       const age = state.ageDays.get(pallet.id) ?? 0;
       const bucket: 0 | 1 | 2 =
         age <= AGE_FRESH_MAX_DAYS ? 0 : age <= AGE_AGING_MAX_DAYS ? 1 : 2;
@@ -327,11 +284,6 @@ export function attachWarehouse(
         symbolCounts[bucket]++,
         symbolDummy.matrix,
       );
-
-      // Fast mover — frame box hugging the pallet
-      if (fastSkus.has(pallet.sku)) {
-        outlineMesh.setMatrixAt(fastN++, palletDummy.matrix);
-      }
     }
 
     palletMesh.count = n;
@@ -342,9 +294,6 @@ export function attachWarehouse(
       symbolMeshes[b].count = symbolCounts[b];
       symbolMeshes[b].instanceMatrix.needsUpdate = true;
     }
-
-    outlineMesh.count = fastN;
-    outlineMesh.instanceMatrix.needsUpdate = true;
   };
 
   handle.updatePallets = updatePallets;
