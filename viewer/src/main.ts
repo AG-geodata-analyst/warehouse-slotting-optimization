@@ -33,11 +33,25 @@ function legendHtml(
     `</div>`;
 
   const footer = qualityMode
-    ? `<div style="margin-top:10px;font-size:11px;opacity:0.7;margin-bottom:6px">Placement quality</div>` +
+    ? `<div style="margin-top:10px;font-size:11px;opacity:0.7;margin-bottom:6px">Placement quality (ABC)</div>` +
+      `<div style="font-size:10px;opacity:0.65;margin-bottom:6px;line-height:1.35">` +
+      `Pallets are tiered A/B/C by SKU velocity (30-day outbound). Slots are tiered A/B/C by distance from dispatch (0,0).<br>` +
+      `<strong>Good</strong> = pallet tier matches slot tier.<br>` +
+      `<strong>Wasted</strong> = slow mover in a prime slot (blocking a fast SKU).<br>` +
+
+
+      `<strong>Misplaced</strong> · fast mover sits too far from dispatch.` +
+      `</div>` +
       `<div style="display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.4">` +
-      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#4caf50;margin-right:8px;vertical-align:middle"></span>Good · tier matches slot</div>` +
-      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#ffb300;margin-right:8px;vertical-align:middle"></span>Wasted · slow mover in prime slot</div>` +
-      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#e53935;margin-right:8px;vertical-align:middle"></span>Misplaced · fast mover too far out</div>` +
+      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#4caf50;margin-right:8px;vertical-align:middle"></span>Good</div>` +
+      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#ffb300;margin-right:8px;vertical-align:middle"></span>Wasted</div>` +
+      `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#e53935;margin-right:8px;vertical-align:middle"></span>Misplaced</div>` +
+      `</div>` +
+      `<div style="margin-top:10px;font-size:11px;opacity:0.7;margin-bottom:4px">Metrics (top of HUD)</div>` +
+      `<div style="font-size:10px;opacity:0.65;line-height:1.35">` +
+      `<strong>% A-placed</strong> · share of A-tier pallets currently in an A-tier slot.<br>` +
+      `<strong>avg distance</strong> · mean straight-line distance (m) from dispatch (0,0) to each pallet's slot.<br>` +
+      `<strong>would move</strong> · pallets whose tier doesn't match their slot's tier (wasted + misplaced).` +
       `</div>`
     : `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
       `<span style="display:inline-block;width:12px;height:12px;background:#d94a4a;border-radius:2px;margin-right:6px;vertical-align:middle"></span>` +
@@ -45,6 +59,7 @@ function legendHtml(
       `</div>`;
 
   return (
+
     `<div style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px">` +
     ageBlock + footer +
     `</div>`
@@ -105,7 +120,7 @@ async function init(): Promise<void> {
     }
 
     let currentIndex = days.length - 1;
-    let qualityOn = false;
+    let qualityOn = true;   // quality view is the primary story — start there
 
     const showDay = (index: number): void => {
       currentIndex = index;
@@ -157,7 +172,7 @@ async function init(): Promise<void> {
           const next = (currentIndex + 1) % days.length;
           daySlider.value = String(next);
           showDay(next);
-        }, 700);
+        }, 1300);
       } else {
         playBtn.textContent = '▶ Play month';
         if (playTimer !== null) {
@@ -171,11 +186,12 @@ async function init(): Promise<void> {
     // ─── Quality toggle ──────────────────────────────────────────────
     const qualityBtn = document.createElement('button');
     qualityBtn.type = 'button';
-    qualityBtn.textContent = 'Quality: Off';
+    qualityBtn.textContent = 'Quality: On';
     qualityBtn.style.cssText =
       'margin-left:8px;padding:4px 10px;border-radius:4px;' +
-      'border:1px solid #555;background:#1e1e1e;color:#eee;' +
+      'border:1px solid #4caf50;background:#2e4a2e;color:#eee;' +
       'font:inherit;cursor:pointer;';
+    
     dayControls?.appendChild(qualityBtn);
 
     qualityBtn.addEventListener('click', () => {
