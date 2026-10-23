@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "as_of": "2026-09-22",
+  "as_of": "2026-09-23",
   "pallets": [
     {
       "id": "P-20260907-02-000",
@@ -66,39 +66,11 @@
       "slot_id": "2F-R09-L01-B01"
     },
     {
-      "id": "P-20260914-03-001",
-      "sku": "N047",
-      "boxes": 14,
-      "gross_weight_kg": 241.1,
-      "slot_id": "2F-R10-L02-B05"
-    },
-    {
-      "id": "P-20260914-03-002",
-      "sku": "N021",
-      "boxes": 19,
-      "gross_weight_kg": 481.8,
-      "slot_id": "B1-R04-L02-B05"
-    },
-    {
       "id": "P-20260916-01-001",
       "sku": "N011",
       "boxes": 32,
       "gross_weight_kg": 176.0,
       "slot_id": "1F-R06-L01-B02"
-    },
-    {
-      "id": "P-20260916-01-002",
-      "sku": "N033",
-      "boxes": 19,
-      "gross_weight_kg": 706.4,
-      "slot_id": "2F-R08-L02-B01"
-    },
-    {
-      "id": "P-20260916-03-000",
-      "sku": "N048",
-      "boxes": 27,
-      "gross_weight_kg": 132.4,
-      "slot_id": "B1-R01-L01-B03"
     },
     {
       "id": "P-20260916-04-001",
@@ -136,13 +108,6 @@
       "slot_id": "2F-R09-L01-B03"
     },
     {
-      "id": "P-20260917-05-002",
-      "sku": "N004",
-      "boxes": 20,
-      "gross_weight_kg": 121.1,
-      "slot_id": "2F-R09-L02-B05"
-    },
-    {
       "id": "P-20260918-01-001",
       "sku": "N039",
       "boxes": 25,
@@ -155,13 +120,6 @@
       "boxes": 18,
       "gross_weight_kg": 190.4,
       "slot_id": "2F-R09-L01-B04"
-    },
-    {
-      "id": "P-20260918-05-002",
-      "sku": "N049",
-      "boxes": 28,
-      "gross_weight_kg": 603.2,
-      "slot_id": "B1-R02-L01-B03"
     },
     {
       "id": "P-20260918-05-003",
@@ -183,13 +141,6 @@
       "boxes": 27,
       "gross_weight_kg": 698.3,
       "slot_id": "B1-R01-L02-B03"
-    },
-    {
-      "id": "P-20260919-04-000",
-      "sku": "N006",
-      "boxes": 12,
-      "gross_weight_kg": 109.5,
-      "slot_id": "2F-R09-L02-B01"
     },
     {
       "id": "P-20260919-04-001",
@@ -276,32 +227,11 @@
       "slot_id": "2F-R08-L01-B05"
     },
     {
-      "id": "P-20260920-05-000",
-      "sku": "N045",
-      "boxes": 34,
-      "gross_weight_kg": 727.7,
-      "slot_id": "1F-R05-L01-B05"
-    },
-    {
-      "id": "P-20260921-01-000",
-      "sku": "N003",
-      "boxes": 18,
-      "gross_weight_kg": 154.4,
-      "slot_id": "B1-R03-L01-B04"
-    },
-    {
       "id": "P-20260921-01-001",
       "sku": "N003",
       "boxes": 34,
       "gross_weight_kg": 210.2,
       "slot_id": "2F-R10-L02-B03"
-    },
-    {
-      "id": "P-20260921-02-000",
-      "sku": "N022",
-      "boxes": 22,
-      "gross_weight_kg": 149.3,
-      "slot_id": "2F-R08-L01-B02"
     },
     {
       "id": "P-20260921-02-001",
@@ -332,32 +262,11 @@
       "slot_id": "1F-R05-L01-B02"
     },
     {
-      "id": "P-20260921-03-001",
-      "sku": "N030",
-      "boxes": 29,
-      "gross_weight_kg": 601.3,
-      "slot_id": "1F-R07-L01-B04"
-    },
-    {
-      "id": "P-20260921-03-002",
-      "sku": "N033",
-      "boxes": 32,
-      "gross_weight_kg": 187.8,
-      "slot_id": "B1-R01-L02-B05"
-    },
-    {
       "id": "P-20260921-03-003",
       "sku": "N039",
       "boxes": 25,
       "gross_weight_kg": 139.4,
       "slot_id": "1F-R06-L01-B04"
-    },
-    {
-      "id": "P-20260921-04-000",
-      "sku": "N028",
-      "boxes": 35,
-      "gross_weight_kg": 491.7,
-      "slot_id": "1F-R05-L01-B03"
     },
     {
       "id": "P-20260921-04-001",
@@ -374,25 +283,11 @@
       "slot_id": "1F-R06-L02-B03"
     },
     {
-      "id": "P-20260921-04-003",
-      "sku": "N004",
-      "boxes": 33,
-      "gross_weight_kg": 196.7,
-      "slot_id": "2F-R10-L02-B04"
-    },
-    {
       "id": "P-20260921-05-000",
       "sku": "N025",
       "boxes": 13,
       "gross_weight_kg": 235.0,
       "slot_id": "B1-R01-L01-B01"
-    },
-    {
-      "id": "P-20260921-05-001",
-      "sku": "N013",
-      "boxes": 34,
-      "gross_weight_kg": 128.6,
-      "slot_id": "2F-R10-L01-B04"
     },
     {
       "id": "P-20260921-05-002",
@@ -409,13 +304,6 @@
       "slot_id": "2F-R10-L01-B05"
     },
     {
-      "id": "P-20260922-01-001",
-      "sku": "N033",
-      "boxes": 12,
-      "gross_weight_kg": 458.1,
-      "slot_id": "1F-R07-L02-B01"
-    },
-    {
       "id": "P-20260922-01-002",
       "sku": "N036",
       "boxes": 32,
@@ -428,13 +316,6 @@
       "boxes": 14,
       "gross_weight_kg": 757.1,
       "slot_id": "B1-R03-L02-B02"
-    },
-    {
-      "id": "P-20260922-02-000",
-      "sku": "N045",
-      "boxes": 13,
-      "gross_weight_kg": 460.6,
-      "slot_id": "B1-R03-L01-B02"
     },
     {
       "id": "P-20260922-02-001",
@@ -486,11 +367,130 @@
       "slot_id": "2F-R08-L01-B01"
     },
     {
-      "id": "P-20260922-05-001",
-      "sku": "N050",
-      "boxes": 29,
-      "gross_weight_kg": 695.2,
+      "id": "P-20260923-01-000",
+      "sku": "N016",
+      "boxes": 21,
+      "gross_weight_kg": 359.1,
+      "slot_id": "B1-R03-L01-B02"
+    },
+    {
+      "id": "P-20260923-01-001",
+      "sku": "N016",
+      "boxes": 25,
+      "gross_weight_kg": 445.5,
+      "slot_id": "1F-R05-L02-B01"
+    },
+    {
+      "id": "P-20260923-01-002",
+      "sku": "N002",
+      "boxes": 32,
+      "gross_weight_kg": 123.0,
+      "slot_id": "B1-R02-L01-B03"
+    },
+    {
+      "id": "P-20260923-02-000",
+      "sku": "N004",
+      "boxes": 27,
+      "gross_weight_kg": 560.5,
+      "slot_id": "2F-R08-L02-B02"
+    },
+    {
+      "id": "P-20260923-02-001",
+      "sku": "N044",
+      "boxes": 14,
+      "gross_weight_kg": 143.1,
+      "slot_id": "2F-R08-L02-B01"
+    },
+    {
+      "id": "P-20260923-02-002",
+      "sku": "N022",
+      "boxes": 19,
+      "gross_weight_kg": 121.8,
+      "slot_id": "B1-R04-L01-B05"
+    },
+    {
+      "id": "P-20260923-02-003",
+      "sku": "N036",
+      "boxes": 23,
+      "gross_weight_kg": 338.1,
       "slot_id": "1F-R07-L02-B02"
+    },
+    {
+      "id": "P-20260923-03-000",
+      "sku": "N041",
+      "boxes": 24,
+      "gross_weight_kg": 467.0,
+      "slot_id": "2F-R10-L01-B02"
+    },
+    {
+      "id": "P-20260923-03-001",
+      "sku": "N037",
+      "boxes": 25,
+      "gross_weight_kg": 517.7,
+      "slot_id": "B1-R03-L01-B04"
+    },
+    {
+      "id": "P-20260923-03-002",
+      "sku": "N048",
+      "boxes": 20,
+      "gross_weight_kg": 737.0,
+      "slot_id": "B1-R04-L02-B05"
+    },
+    {
+      "id": "P-20260923-03-003",
+      "sku": "N020",
+      "boxes": 28,
+      "gross_weight_kg": 455.5,
+      "slot_id": "1F-R07-L01-B01"
+    },
+    {
+      "id": "P-20260923-04-000",
+      "sku": "N010",
+      "boxes": 36,
+      "gross_weight_kg": 574.7,
+      "slot_id": "B1-R02-L02-B03"
+    },
+    {
+      "id": "P-20260923-04-001",
+      "sku": "N041",
+      "boxes": 26,
+      "gross_weight_kg": 559.1,
+      "slot_id": "B1-R02-L02-B05"
+    },
+    {
+      "id": "P-20260923-04-002",
+      "sku": "N029",
+      "boxes": 29,
+      "gross_weight_kg": 152.6,
+      "slot_id": "1F-R05-L02-B05"
+    },
+    {
+      "id": "P-20260923-05-000",
+      "sku": "N038",
+      "boxes": 20,
+      "gross_weight_kg": 580.7,
+      "slot_id": "B1-R03-L02-B05"
+    },
+    {
+      "id": "P-20260923-05-001",
+      "sku": "N040",
+      "boxes": 32,
+      "gross_weight_kg": 383.9,
+      "slot_id": "1F-R07-L02-B03"
+    },
+    {
+      "id": "P-20260923-05-002",
+      "sku": "N006",
+      "boxes": 19,
+      "gross_weight_kg": 626.9,
+      "slot_id": "2F-R10-L02-B02"
+    },
+    {
+      "id": "P-20260923-05-003",
+      "sku": "N035",
+      "boxes": 35,
+      "gross_weight_kg": 474.0,
+      "slot_id": "1F-R07-L01-B03"
     }
   ]
 }
