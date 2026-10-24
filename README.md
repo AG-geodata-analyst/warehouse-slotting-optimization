@@ -67,12 +67,12 @@ Three.js 3D viewer  (GitHub Pages)
 
 | Version | Focus | Status |
 |---|---|---|
-| **v0.1** | Data model, 100-slot layout, deterministic day generator | 🔨 in progress |
-| **v0.2** | GitHub Actions scheduled simulation (daily commit) | ⏳ |
-| **v0.3** | Three.js 3D viewer (100 slots, 30 days) | ⏳ |
-| **v0.4** | Movement story (pallet age colouring, fast-mover highlight) | ⏳ |
+| **v0.1** | Data model, 100-slot layout, deterministic day generator | ✅ |
+| **v0.2** | GitHub Actions scheduled simulation (daily commit) | ✅ |
+| **v0.3** | Three.js 3D viewer (100 slots, 30 days) | ✅ |
+| **v0.4** | Movement story (pallet age colouring, fast-mover highlight) | ✅ |
 | **v0.5** | Palletization module (box → pallet configuration viewer) | ⏳ |
-| **v0.6** | Slotting recommendations overlay (top-3 candidate slots) | ⏳ |
+| **v0.6** | Slotting recommendations overlay (top-3 candidate slots) | ✅ |
 | **v1.0** | KPIs, tests, docs | ⏳ |
 | **v2.0** | Backend for user-submitted what-if scenarios | ⏳ |
 

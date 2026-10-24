@@ -1,7 +1,7 @@
 {
   "name": "warehouse-viewer",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "sync-data": "rm -rf public/data && mkdir -p public && cp -r ../data public/data",
