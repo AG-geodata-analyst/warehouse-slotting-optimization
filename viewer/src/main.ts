@@ -2,6 +2,7 @@ import { createScene, attachWarehouse, AGE_FRESH_MAX_DAYS, AGE_AGING_MAX_DAYS } 
 import { loadLayout, loadBootstrap, loadManifest, loadAllDays } from './data';
 import { buildTimeline, analyzeMovement, type WarehouseState } from './replay';
 import { analyzePlacement, computeSkuVelocity } from './slotting';
+import { openPanel, closePanel, bindPanelEvents, isPanelOpen } from './detail-panel';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('canvas#scene not found');
@@ -38,9 +39,7 @@ function legendHtml(
       `Pallets are tiered A/B/C by SKU velocity (30-day outbound). Slots are tiered A/B/C by distance from dispatch (0,0).<br>` +
       `<strong>Good</strong> = pallet tier matches slot tier.<br>` +
       `<strong>Wasted</strong> = slow mover in a prime slot (blocking a fast SKU).<br>` +
-
-
-      `<strong>Misplaced</strong> · fast mover sits too far from dispatch.` +
+      `<strong>Misplaced</strong> = fast mover sits too far from dispatch.` +
       `</div>` +
       `<div style="display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.4">` +
       `<div><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#4caf50;margin-right:8px;vertical-align:middle"></span>Good</div>` +
@@ -49,20 +48,19 @@ function legendHtml(
       `</div>` +
       `<div style="margin-top:10px;font-size:11px;opacity:0.7;margin-bottom:4px">Metrics (top of HUD)</div>` +
       `<div style="font-size:10px;opacity:0.65;line-height:1.35">` +
-
       `<strong>% A-placed</strong> · share of A-tier pallets currently in an A-tier slot.<br>` +
       `<strong>avg distance</strong> · mean straight-line distance (m) from dispatch (0,0) to each pallet's slot.<br>` +
       `<strong>would move</strong> · pallets whose tier doesn't match their slot's tier (wasted + misplaced).<br>` +
       `<strong style="color:#ff6b6b">stranded</strong> · fast movers (A-tier) stuck in bad slots for ≥15 days — highest-priority moves to fix.` +
-      `</div>`
-
+      `</div>` +
+      `<div style="margin-top:8px;font-size:10px;opacity:0.5">Click any pallet to inspect stacking · Esc to close</div>`
     : `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
       `<span style="display:inline-block;width:12px;height:12px;background:#d94a4a;border-radius:2px;margin-right:6px;vertical-align:middle"></span>` +
       `Fast mover · top ${fastCount} SKU${fastCount === 1 ? '' : 's'} by ${windowDays}-day outbound` +
-      `</div>`;
+      `</div>` +
+      `<div style="margin-top:8px;font-size:10px;opacity:0.5">Click any pallet to inspect stacking · Esc to close</div>`;
 
   return (
-
     `<div style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:8px">` +
     ageBlock + footer +
     `</div>`
@@ -110,7 +108,6 @@ async function init(): Promise<void> {
       `${insights.windowDays}-day outbound): ${insights.topSkus.join(', ')}`,
     );
 
-    // Full-window SKU velocity for ABC tiering.
     const skuVelocity = computeSkuVelocity(bootstrap, days);
     console.log(
       `[viewer] SKU velocity computed for ${skuVelocity.size} SKUs (full ${days.length}-day window)`,
@@ -123,7 +120,7 @@ async function init(): Promise<void> {
     }
 
     let currentIndex = days.length - 1;
-    let qualityOn = true;   // quality view is the primary story — start there
+    let qualityOn = true;
 
     const showDay = (index: number): void => {
       currentIndex = index;
@@ -137,7 +134,6 @@ async function init(): Promise<void> {
       if (hud) {
         const pct = Math.round((state.slots.size / slotCount) * 100);
         let qualityKpi = '';
-
         if (analysis) {
           const { aPlacedPct, avgPickDistance, wouldMove, stranded } = analysis.kpis;
           const strandedPart =
@@ -149,8 +145,6 @@ async function init(): Promise<void> {
             `avg ${avgPickDistance.toFixed(1)} m · ${wouldMove} would move` +
             `${strandedPart}<br>`;
         }
-
-
         hud.innerHTML =
           `<strong>Warehouse</strong> · ${layout.floors.length} floors · ` +
           `${layout.racks.length} racks · ${slotCount} slots<br>` +
@@ -159,6 +153,9 @@ async function init(): Promise<void> {
           `<span style="font-size:11px;opacity:0.7">drag to orbit · scroll to zoom · right-drag to pan</span>` +
           legendHtml(insights.topSkus.length, insights.windowDays, qualityOn);
       }
+
+      // Close any open pallet panel — state changed
+      if (isPanelOpen()) closePanel();
     };
 
     if (dayControls) dayControls.style.display = 'flex';
@@ -202,7 +199,6 @@ async function init(): Promise<void> {
       'margin-left:8px;padding:4px 10px;border-radius:4px;' +
       'border:1px solid #4caf50;background:#2e4a2e;color:#eee;' +
       'font:inherit;cursor:pointer;';
-    
     dayControls?.appendChild(qualityBtn);
 
     qualityBtn.addEventListener('click', () => {
@@ -220,6 +216,44 @@ async function init(): Promise<void> {
       });
     }
 
+    // ─── Pallet click → detail panel ────────────────────────────────
+    bindPanelEvents();
+
+    let downX = 0;
+    let downY = 0;
+
+
+    canvas!.addEventListener('pointerdown', (e) => {
+      downX = e.clientX;
+      downY = e.clientY;
+    });
+    canvas!.addEventListener('pointerup', (e) => {
+
+      const dx = e.clientX - downX;
+      const dy = e.clientY - downY;
+      if (Math.sqrt(dx * dx + dy * dy) > 5) return;  // drag, not click
+      const slotId = handle.pickPallet(e.clientX, e.clientY);
+      if (!slotId) {
+        if (isPanelOpen()) closePanel();
+        return;
+      }
+      const state = timeline[currentIndex];
+      const pallet = state.slots.get(slotId);
+      if (!pallet) return;
+      const analysis = qualityOn ? analyzePlacement(state, layout, skuVelocity) : null;
+      openPanel({
+        slotId,
+        pallet,
+        ageDays: state.ageDays.get(pallet.id) ?? 0,
+        quality: analysis?.slotQuality.get(slotId),
+      });
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isPanelOpen()) closePanel();
+    });
+
+    // Initial render
     showDay(days.length - 1);
   } catch (err) {
     console.error(err);

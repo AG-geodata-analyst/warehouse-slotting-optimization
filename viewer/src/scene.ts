@@ -38,6 +38,7 @@ const SYMBOL_SIZE = 0.28;
 const SYMBOL_INSET = 0.02;
 const SYMBOL_OPACITY = 0.88;
 
+
 export interface SceneHandle {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -48,6 +49,8 @@ export interface SceneHandle {
     fastSkus: Set<string>,
     qualityMode?: Map<string, Quality> | null,
   ) => void;
+  /** Returns slot id of the pallet under the given client coords, or null. */
+  pickPallet: (clientX: number, clientY: number) => string | null;
 }
 
 function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture {
@@ -150,7 +153,9 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
     camera,
     controls,
     updatePallets: () => {},
+    pickPallet: () => null,
   };
+
 }
 
 export function attachWarehouse(
@@ -260,6 +265,11 @@ export function attachWarehouse(
   const palletDummy = new THREE.Object3D();
   const symbolDummy = new THREE.Object3D();
 
+  // Raycaster state for click picking
+  const raycaster = new THREE.Raycaster();
+  const pointerNdc = new THREE.Vector2();
+  const slotIdByInstance = new Map<number, string>();
+
   // Symbol is anchored to the PALLET's front-top-right corner.
   const palletHalfW = (SLOT_WIDTH_M * PALLET_BOX_SCALE) / 2;
   const palletHalfH = (SLOT_HEIGHT_M * PALLET_BOX_SCALE) / 2;
@@ -368,6 +378,8 @@ export function attachWarehouse(
     let n = 0;
     const symbolCounts: [number, number, number] = [0, 0, 0];
 
+
+    slotIdByInstance.clear();
     for (const [slotId, pallet] of state.slots) {
       const pos = slotPositions.get(slotId);
       if (!pos) continue;
@@ -375,6 +387,8 @@ export function attachWarehouse(
       palletDummy.position.copy(pos);
       palletDummy.updateMatrix();
       palletMesh.setMatrixAt(n, palletDummy.matrix);
+      slotIdByInstance.set(n, slotId);
+
 
       let colour: THREE.Color;
       if (qualityMode) {
@@ -412,4 +426,19 @@ export function attachWarehouse(
   };
 
   handle.updatePallets = updatePallets;
+
+  handle.pickPallet = (clientX: number, clientY: number): string | null => {
+    const rect = handle.renderer.domElement.getBoundingClientRect();
+    pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointerNdc, handle.camera);
+    const hits = raycaster.intersectObject(palletMesh);
+    for (const h of hits) {
+      if (h.instanceId !== undefined) {
+        const sid = slotIdByInstance.get(h.instanceId);
+        if (sid) return sid;
+      }
+    }
+    return null;
+  };
 }
