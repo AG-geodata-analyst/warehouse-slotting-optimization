@@ -8,6 +8,10 @@ const DISPATCH_Z = 0;
 // Must match scene.ts geometry.
 const SLOT_WIDTH_M = 1.2;
 
+// Age threshold for the "stranded" KPI. Matches AGE_AGING_MAX_DAYS + 1
+// in scene.ts — keep in sync if that threshold changes.
+const STRANDED_MIN_AGE_DAYS = 15;
+
 export type Tier = 'A' | 'B' | 'C';
 export type Quality = 'good' | 'misplaced' | 'wasted';
 
@@ -18,6 +22,8 @@ export interface PlacementKPIs {
   avgPickDistance: number;
   /** Pallets whose tier doesn't match their slot's tier. */
   wouldMove: number;
+  /** A-tier pallets stuck in non-A slots for ≥ STRANDED_MIN_AGE_DAYS. */
+  stranded: number;
   totalPalletCount: number;
 }
 
@@ -113,6 +119,7 @@ export function analyzePlacement(
   let totalDist = 0;
   let count = 0;
   let wouldMove = 0;
+  let stranded = 0;
   let aTotal = 0;
   let aPlaced = 0;
 
@@ -141,6 +148,12 @@ export function analyzePlacement(
       slotQuality.set(slotId, 'wasted');
       wouldMove++;
     }
+
+    // Stranded: fast mover in a bad slot, sitting there a long time.
+    const age = state.ageDays.get(pallet.id) ?? 0;
+    if (kt === 'A' && st !== 'A' && age >= STRANDED_MIN_AGE_DAYS) {
+      stranded++;
+    }
   }
 
   return {
@@ -149,6 +162,7 @@ export function analyzePlacement(
       aPlacedPct: aTotal > 0 ? (aPlaced / aTotal) * 100 : 0,
       avgPickDistance: count > 0 ? totalDist / count : 0,
       wouldMove,
+      stranded,
       totalPalletCount: count,
     },
   };

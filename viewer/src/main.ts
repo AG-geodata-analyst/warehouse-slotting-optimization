@@ -49,10 +49,13 @@ function legendHtml(
       `</div>` +
       `<div style="margin-top:10px;font-size:11px;opacity:0.7;margin-bottom:4px">Metrics (top of HUD)</div>` +
       `<div style="font-size:10px;opacity:0.65;line-height:1.35">` +
+
       `<strong>% A-placed</strong> · share of A-tier pallets currently in an A-tier slot.<br>` +
       `<strong>avg distance</strong> · mean straight-line distance (m) from dispatch (0,0) to each pallet's slot.<br>` +
-      `<strong>would move</strong> · pallets whose tier doesn't match their slot's tier (wasted + misplaced).` +
+      `<strong>would move</strong> · pallets whose tier doesn't match their slot's tier (wasted + misplaced).<br>` +
+      `<strong style="color:#ff6b6b">stranded</strong> · fast movers (A-tier) stuck in bad slots for ≥15 days — highest-priority moves to fix.` +
       `</div>`
+
     : `<div style="margin-top:8px;font-size:11px;opacity:0.75">` +
       `<span style="display:inline-block;width:12px;height:12px;background:#d94a4a;border-radius:2px;margin-right:6px;vertical-align:middle"></span>` +
       `Fast mover · top ${fastCount} SKU${fastCount === 1 ? '' : 's'} by ${windowDays}-day outbound` +
@@ -134,12 +137,20 @@ async function init(): Promise<void> {
       if (hud) {
         const pct = Math.round((state.slots.size / slotCount) * 100);
         let qualityKpi = '';
+
         if (analysis) {
-          const { aPlacedPct, avgPickDistance, wouldMove } = analysis.kpis;
+          const { aPlacedPct, avgPickDistance, wouldMove, stranded } = analysis.kpis;
+          const strandedPart =
+            stranded > 0
+              ? ` · <span style="color:#ff6b6b;font-weight:600">${stranded} stranded</span>`
+              : ` · <span style="color:#666">0 stranded</span>`;
           qualityKpi =
             `<strong>Quality</strong> · ${aPlacedPct.toFixed(0)}% A-placed · ` +
-            `avg ${avgPickDistance.toFixed(1)} m · ${wouldMove} would move<br>`;
+            `avg ${avgPickDistance.toFixed(1)} m · ${wouldMove} would move` +
+            `${strandedPart}<br>`;
         }
+
+
         hud.innerHTML =
           `<strong>Warehouse</strong> · ${layout.floors.length} floors · ` +
           `${layout.racks.length} racks · ${slotCount} slots<br>` +
