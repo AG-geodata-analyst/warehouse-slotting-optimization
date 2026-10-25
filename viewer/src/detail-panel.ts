@@ -156,10 +156,8 @@ function createMini3D(
 
   // Boxes — render every pallet in the batch, placed side by side along X.
   const boxMat = new THREE.MeshStandardMaterial({
-    color: 0xe0c89a,   // cardboard / wooden box tone (matches the deck feel)
+    color: 0xe0c89a,
     roughness: 0.85,
-    transparent: true,
-    opacity: 0.88,
   });
 
   const outlineMat = new THREE.MeshBasicMaterial({
