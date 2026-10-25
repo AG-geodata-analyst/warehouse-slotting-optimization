@@ -15,12 +15,19 @@ export interface BoxSpec {
 }
 
 export const BOX_SPECS: BoxSpec[] = [
+  // --- Original 6 (mostly Column winners) ---
   { id: 'cube-s', shape: 'cube', width: 250, depth: 250, height: 250, label: 'Cube S · 25×25×25' },
   { id: 'cube-m', shape: 'cube', width: 300, depth: 300, height: 300, label: 'Cube M · 30×30×30' },
   { id: 'cube-l', shape: 'cube', width: 400, depth: 400, height: 400, label: 'Cube L · 40×40×40' },
   { id: 'rect-s', shape: 'rect', width: 300, depth: 200, height: 150, label: 'Rect S · 30×20×15' },
   { id: 'rect-m', shape: 'rect', width: 400, depth: 300, height: 250, label: 'Rect M · 40×30×25' },
   { id: 'rect-l', shape: 'rect', width: 600, depth: 400, height: 300, label: 'Rect L · 60×40×30' },
+
+  // --- 4 New Boxes (to trigger Split-Block and Pinwheel) ---
+  { id: 'rect-long', shape: 'rect', width: 600, depth: 180, height: 200, label: 'Rect Long · 60×18×20' },
+  { id: 'rect-wedge', shape: 'rect', width: 500, depth: 200, height: 200, label: 'Rect Wedge · 50×20×20' },
+  { id: 'rect-xl', shape: 'rect', width: 450, depth: 300, height: 250, label: 'Rect XL · 45×30×25' },
+  { id: 'cube-flat', shape: 'cube', width: 350, depth: 350, height: 150, label: 'Cube Flat · 35×35×15' },
 ];
 
 export type PatternId = 'pinwheel' | 'split-block' | 'column';
@@ -94,18 +101,25 @@ function pinwheelPattern(W: number, D: number): PatternBase {
   return { layerA, layerB, width: patternW, depth: 2 * W + D };
 }
 
-function splitBlockPattern(W: number, D: number): PatternBase {
-  const N = Math.floor((2 * W) / D);
+function splitBlockPattern(W: number, D: number, stackDepth: number): PatternBase | null {
+  // Verticals at edges need 2W ≤ stackDepth to avoid overlap.
+  if (2 * W > stackDepth) return null;
+  const N = Math.floor(stackDepth / D);
+  if (N === 0) return null;
+  const totalH = N * D;
+  const hOffset = (stackDepth - totalH) / 2;  // center horizontals if leftover
+
   const layerA: LocalBox[] = [
-    { x: 0, y: 0, w: D, d: W },           // V top-left
-    { x: 0, y: W, w: D, d: W },           // V bot-left
+    { x: 0, y: 0, w: D, d: W },                    // V at top edge
+    { x: 0, y: stackDepth - W, w: D, d: W },       // V at bottom edge
   ];
   for (let i = 0; i < N; i++) {
-    layerA.push({ x: D, y: i * D, w: W, d: D });
+    layerA.push({ x: D, y: hOffset + i * D, w: W, d: D });
   }
+
   const patternW = W + D;
   const layerB = layerA.map((p) => ({ ...p, x: patternW - p.x - p.w }));
-  return { layerA, layerB, width: patternW, depth: 2 * W };
+  return { layerA, layerB, width: patternW, depth: stackDepth };
 }
 
 function columnPattern(W: number, D: number, cols: number, rows: number): PatternBase {
@@ -155,14 +169,19 @@ function chooseBestPattern(targetBoxes: number, box: BoxSpec): StackPlan {
     candidates.push({ ...pinB, pattern: 'pinwheel', orientation: 'B' });
   }
 
-  // Split-Block — A and B tried independently
-  const sb = splitBlockPattern(W, D);
-  if (fits(sb.width, sb.depth)) {
-    candidates.push({ ...sb, pattern: 'split-block', orientation: 'A' });
+  // Split-Block A: verticals stacked along 800 depth
+  const sbA = splitBlockPattern(W, D, PALLET_D);
+  if (sbA && fits(sbA.width, sbA.depth)) {
+    candidates.push({ ...sbA, pattern: 'split-block', orientation: 'A' });
   }
-  const sbB = rotatePattern(sb);
-  if (fits(sbB.width, sbB.depth)) {
-    candidates.push({ ...sbB, pattern: 'split-block', orientation: 'B' });
+
+  // Split-Block B: verticals stacked along 1200 width, then rotate
+  const sbB_raw = splitBlockPattern(W, D, PALLET_W);
+  if (sbB_raw) {
+    const sbB = rotatePattern(sbB_raw);
+    if (fits(sbB.width, sbB.depth)) {
+      candidates.push({ ...sbB, pattern: 'split-block', orientation: 'B' });
+    }
   }
 
   // Column — A and B are DIFFERENT grids (not rotations of each other)
