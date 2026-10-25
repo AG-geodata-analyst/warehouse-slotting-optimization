@@ -59,6 +59,7 @@ export interface SceneHandle {
     boxesMode?: boolean,
   ) => void;
   pickPallet: (clientX: number, clientY: number) => string | null;
+  getSlotColor: (slotId: string) => string;
 }
 
 function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture {
@@ -162,6 +163,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
     controls,
     updatePallets: () => {},
     pickPallet: () => null,
+    getSlotColor: () => '#e0c89a',
   };
 }
 
@@ -260,10 +262,7 @@ export function attachWarehouse(
   boxMesh.visible = false;
   scene.add(boxMesh);
 
-  // ─── Box outline mesh — black edges for separation ─────────────────
-  // Rendered at full scale with BackSide so only the black back faces
-  // show through the gap around each inset colored box. Gives every
-  // box a clean black border so adjacent boxes are visually distinct.
+  // ─── Box outline mesh ──────────────────────────────────────────────
   const boxOutlineMat = new THREE.MeshBasicMaterial({
     color: 0x000000,
     side: THREE.BackSide,
@@ -278,11 +277,6 @@ export function attachWarehouse(
   scene.add(boxOutlineMesh);
 
   // ─── Pick proxy (invisible, raycast-only) ──────────────────────────
-  // Covers each occupied slot's full pallet footprint. Solves the
-  // "click lands in a gap between boxes" problem in Boxes mode:
-  // the raycaster hits the proxy even when no box surface is there.
-  // colorWrite:false keeps it invisible without setting visible:false
-  // (visible:false would make the raycaster skip it too).
   const pickProxyGeom = new THREE.BoxGeometry(
     PALLET_SCENE_W,
     PALLET_SCENE_H,
@@ -499,7 +493,6 @@ export function attachWarehouse(
           boxN++;
         }
       } else {
-
         palletDummy.position.copy(pos);
         palletDummy.updateMatrix();
         palletMesh.setMatrixAt(palletN, palletDummy.matrix);
@@ -548,8 +541,6 @@ export function attachWarehouse(
     pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointerNdc, handle.camera);
 
-    // Pick proxy covers the full pallet footprint — works in both view
-    // modes, including clicks that land in gaps between individual boxes.
     const proxyHits = raycaster.intersectObject(pickProxyMesh);
     if (proxyHits.length > 0) {
       const hit = proxyHits[0];
@@ -559,5 +550,10 @@ export function attachWarehouse(
       }
     }
     return null;
+  };
+
+  handle.getSlotColor = (slotId: string): string => {
+    const c = slotPalletColors.get(slotId);
+    return c ? '#' + c.getHexString() : '#e0c89a';
   };
 }

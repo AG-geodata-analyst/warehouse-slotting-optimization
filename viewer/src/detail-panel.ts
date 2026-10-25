@@ -9,6 +9,7 @@ export interface PanelContext {
   pallet: Pallet;
   ageDays: number;
   quality?: Quality;
+  slotColor?: string;
 }
 
 const QUALITY_LABEL: Record<Quality, string> = {
@@ -85,8 +86,7 @@ function disposeMini3D(): void {
     miniControls = null;
   }
 
-  // Dispose all geometries and materials before releasing the renderer,
-  // otherwise GPU memory stays allocated until the next GC pass.
+  // Dispose all geometries and materials before releasing the renderer.
   if (miniScene) {
     miniScene.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
@@ -99,8 +99,6 @@ function disposeMini3D(): void {
 
   if (miniRenderer) {
     miniRenderer.dispose();
-    // Explicitly release the WebGL context so the browser's context pool
-    // doesn't leak — this is the fix for the "white screen after N clicks".
     miniRenderer.forceContextLoss();
     miniRenderer = null;
   }
@@ -112,7 +110,11 @@ function disposeMini3D(): void {
   }
 }
 
-function createMini3D(container: HTMLDivElement, plans: StackPlan[]): void {
+function createMini3D(
+  container: HTMLDivElement,
+  plans: StackPlan[],
+  colorHex: string,
+): void {
   disposeMini3D();
   miniContainerEl = container;
 
@@ -155,7 +157,7 @@ function createMini3D(container: HTMLDivElement, plans: StackPlan[]): void {
 
   // Boxes — render every pallet in the batch, placed side by side along X.
   const boxMat = new THREE.MeshStandardMaterial({
-    color: 0xe0c89a,
+    color: new THREE.Color(colorHex),
     roughness: 0.85,
     transparent: true,
     opacity: 0.88,
@@ -202,7 +204,6 @@ function createMini3D(container: HTMLDivElement, plans: StackPlan[]): void {
       scene.add(mesh);
     }
   }
-
 
   const controls = new OrbitControls(camera, canvas);
   const totalWidth = PALLET_W + (plans.length - 1) * palletGap;
@@ -389,13 +390,11 @@ export function openPanel(ctx: PanelContext): void {
   panel.innerHTML = buildPanelHtml(ctx, currentPlans);
   panel.style.transform = 'translateX(0)';
 
-
   const mini = panel.querySelector('#mini-3d') as HTMLDivElement | null;
   if (mini && currentPlans.length > 0) {
     try {
-      createMini3D(mini, currentPlans);
+      createMini3D(mini, currentPlans, ctx.slotColor ?? '#e0c89a');
     } catch (e) {
-
       console.warn('[panel] mini-3D init failed', e);
       mini.innerHTML = '<div style="padding:12px;font-size:11px;opacity:0.6;">3D preview unavailable in this browser.</div>';
     }

@@ -126,7 +126,6 @@ async function init(): Promise<void> {
     const showDay = (index: number): void => {
       currentIndex = index;
       const state = timeline[index];
-
       const analysis = qualityOn ? analyzePlacement(state, layout, skuVelocity) : null;
       handle.updatePallets(state, insights.fastSkus, analysis?.slotQuality ?? null, boxesMode);
 
@@ -156,7 +155,6 @@ async function init(): Promise<void> {
           legendHtml(insights.topSkus.length, insights.windowDays, qualityOn);
       }
 
-      // Close any open pallet panel — state changed
       if (isPanelOpen()) closePanel();
     };
 
@@ -211,7 +209,7 @@ async function init(): Promise<void> {
       showDay(currentIndex);
     });
 
-    // ─── Blocks / Boxes view toggle ──────────────────────────────────
+    // ─── Boxes view toggle ──────────────────────────────────────────
     const boxesViewBtn = document.createElement('button');
     boxesViewBtn.type = 'button';
     boxesViewBtn.textContent = 'View: Blocks';
@@ -241,14 +239,11 @@ async function init(): Promise<void> {
 
     let downX = 0;
     let downY = 0;
-
-
     canvas!.addEventListener('pointerdown', (e) => {
       downX = e.clientX;
       downY = e.clientY;
     });
     canvas!.addEventListener('pointerup', (e) => {
-
       const dx = e.clientX - downX;
       const dy = e.clientY - downY;
       if (Math.sqrt(dx * dx + dy * dy) > 5) return;  // drag, not click
@@ -266,6 +261,7 @@ async function init(): Promise<void> {
         pallet,
         ageDays: state.ageDays.get(pallet.id) ?? 0,
         quality: analysis?.slotQuality.get(slotId),
+        slotColor: handle.getSlotColor(slotId),
       });
     });
 
