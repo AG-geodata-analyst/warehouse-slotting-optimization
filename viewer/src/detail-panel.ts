@@ -165,6 +165,8 @@ function createMini3D(
   const outlineMat = new THREE.MeshBasicMaterial({
     color: 0x000000,
     side: THREE.BackSide,
+    transparent: true,
+    opacity: 0.65,
   });
 
   const palletGap = PALLET_W * 1.15;  // 15% gap between pallets
@@ -200,7 +202,7 @@ function createMini3D(
         baseH + p.z + p.height / 2,
         p.y + p.depth / 2,
       );
-      mesh.scale.set(0.94, 0.94, 0.94);
+      mesh.scale.set(0.97, 0.97, 0.97);
       scene.add(mesh);
     }
   }

@@ -266,6 +266,8 @@ export function attachWarehouse(
   const boxOutlineMat = new THREE.MeshBasicMaterial({
     color: 0x000000,
     side: THREE.BackSide,
+    transparent: true,
+    opacity: 0.65,
   });
   const boxOutlineMesh = new THREE.InstancedMesh(
     boxGeom,
@@ -464,7 +466,7 @@ export function attachWarehouse(
 
       if (boxesMode) {
         const plan = planStack(pallet.boxes, pallet.sku);
-        const BOX_INSET = 0.94;   // colored box shrunk to 94% → 6% black border
+        const BOX_INSET = 0.97;   // colored box shrunk to 97% → thinner black border
         for (const p of plan.placements) {
           const bx = (p.x + p.width / 2 - PALLET_W / 2) * BOX_SCALE_X;
           const by = (p.z + p.height / 2 - PALLET_H / 2) * BOX_SCALE_Y;
