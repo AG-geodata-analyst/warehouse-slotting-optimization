@@ -247,6 +247,8 @@ export function attachWarehouse(
     color: 0xffffff,
     roughness: 0.85,
     metalness: 0.0,
+    transparent: true,
+    opacity: 0.88,
   });
   const boxCapacity = totalSlots * MAX_BOXES_PER_PALLET;
   const boxMesh = new THREE.InstancedMesh(boxGeom, boxMat, boxCapacity);

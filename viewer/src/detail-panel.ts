@@ -153,9 +153,18 @@ function createMini3D(container: HTMLDivElement, plans: StackPlan[]): void {
   base.position.set(PALLET_W / 2, baseH / 2, PALLET_D / 2);
   scene.add(base);
 
-  // Boxes
   // Boxes — render every pallet in the batch, placed side by side along X.
-  const boxMat = new THREE.MeshStandardMaterial({ color: 0xe0c89a, roughness: 0.85 });
+  const boxMat = new THREE.MeshStandardMaterial({
+    color: 0xe0c89a,
+    roughness: 0.85,
+    transparent: true,
+    opacity: 0.88,
+  });
+  const outlineMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.BackSide,
+  });
+
   const palletGap = PALLET_W * 1.15;  // 15% gap between pallets
   for (let i = 0; i < plans.length; i++) {
     const plan = plans[i];
@@ -169,17 +178,31 @@ function createMini3D(container: HTMLDivElement, plans: StackPlan[]): void {
       extraBase.position.set(PALLET_W / 2 + offsetX, baseH / 2, PALLET_D / 2);
       scene.add(extraBase);
     }
+    
     for (const p of plan.placements) {
       const geom = new THREE.BoxGeometry(p.width * 0.98, p.height * 0.98, p.depth * 0.98);
+      
+      // 1. Black outline box (full size)
+      const outline = new THREE.Mesh(geom, outlineMat);
+      outline.position.set(
+        p.x + p.width / 2 + offsetX,
+        baseH + p.z + p.height / 2,
+        p.y + p.depth / 2,
+      );
+      scene.add(outline);
+
+      // 2. Colored transparent box (shrunk 6% to reveal black edges)
       const mesh = new THREE.Mesh(geom, boxMat);
       mesh.position.set(
         p.x + p.width / 2 + offsetX,
         baseH + p.z + p.height / 2,
         p.y + p.depth / 2,
       );
+      mesh.scale.set(0.94, 0.94, 0.94);
       scene.add(mesh);
     }
   }
+
 
   const controls = new OrbitControls(camera, canvas);
   const totalWidth = PALLET_W + (plans.length - 1) * palletGap;
