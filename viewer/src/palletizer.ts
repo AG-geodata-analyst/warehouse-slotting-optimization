@@ -15,19 +15,21 @@ export interface BoxSpec {
 }
 
 export const BOX_SPECS: BoxSpec[] = [
-  // --- Original 6 (mostly Column winners) ---
-  { id: 'cube-s', shape: 'cube', width: 250, depth: 250, height: 250, label: 'Cube S · 25×25×25' },
-  { id: 'cube-m', shape: 'cube', width: 300, depth: 300, height: 300, label: 'Cube M · 30×30×30' },
-  { id: 'cube-l', shape: 'cube', width: 400, depth: 400, height: 400, label: 'Cube L · 40×40×40' },
-  { id: 'rect-s', shape: 'rect', width: 300, depth: 200, height: 150, label: 'Rect S · 30×20×15' },
-  { id: 'rect-m', shape: 'rect', width: 400, depth: 300, height: 250, label: 'Rect M · 40×30×25' },
-  { id: 'rect-l', shape: 'rect', width: 600, depth: 400, height: 300, label: 'Rect L · 60×40×30' },
+  // ─── Column winners (4) ─────────────────────────────────────────
+  { id: 'cube-s',   shape: 'cube', width: 250, depth: 250, height: 250, label: 'Cube S · 25×25×25' },
+  { id: 'rect-s',   shape: 'rect', width: 300, depth: 200, height: 150, label: 'Rect S · 30×20×15' },
+  { id: 'cube-m',   shape: 'cube', width: 300, depth: 300, height: 300, label: 'Cube M · 30×30×30' },
+  { id: 'rect-sm',  shape: 'rect', width: 350, depth: 250, height: 200, label: 'Rect SM · 35×25×20' },
 
-  // --- 4 New Boxes (to trigger Split-Block and Pinwheel) ---
+  // ─── Pinwheel winners (3) ───────────────────────────────────────
+  { id: 'cube-l',   shape: 'cube', width: 400, depth: 400, height: 400, label: 'Cube L · 40×40×40' },
+  { id: 'rect-xl',  shape: 'rect', width: 450, depth: 300, height: 250, label: 'Rect XL · 45×30×25' },
+  { id: 'rect-pw',  shape: 'rect', width: 400, depth: 350, height: 200, label: 'Rect PW · 40×35×20' },
+
+  // ─── Split-Block winners (3) ────────────────────────────────────
   { id: 'rect-long', shape: 'rect', width: 600, depth: 180, height: 200, label: 'Rect Long · 60×18×20' },
-  { id: 'rect-wedge', shape: 'rect', width: 500, depth: 200, height: 200, label: 'Rect Wedge · 50×20×20' },
-  { id: 'rect-xl', shape: 'rect', width: 450, depth: 300, height: 250, label: 'Rect XL · 45×30×25' },
-  { id: 'cube-flat', shape: 'cube', width: 350, depth: 350, height: 150, label: 'Cube Flat · 35×35×15' },
+  { id: 'rect-wedge', shape: 'rect', width: 500, depth: 300, height: 250, label: 'Rect Wedge · 50×30×25' },
+  { id: 'rect-sb',  shape: 'rect', width: 550, depth: 280, height: 250, label: 'Rect SB · 55×28×25' },
 ];
 
 export type PatternId = 'pinwheel' | 'split-block' | 'column';

@@ -258,6 +258,23 @@ export function attachWarehouse(
   boxMesh.visible = false;
   scene.add(boxMesh);
 
+  // ─── Box outline mesh — black edges for separation ─────────────────
+  // Rendered at full scale with BackSide so only the black back faces
+  // show through the gap around each inset colored box. Gives every
+  // box a clean black border so adjacent boxes are visually distinct.
+  const boxOutlineMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.BackSide,
+  });
+  const boxOutlineMesh = new THREE.InstancedMesh(
+    boxGeom,
+    boxOutlineMat,
+    boxCapacity,
+  );
+  boxOutlineMesh.count = 0;
+  boxOutlineMesh.visible = false;
+  scene.add(boxOutlineMesh);
+
   // ─── Pick proxy (invisible, raycast-only) ──────────────────────────
   // Covers each occupied slot's full pallet footprint. Solves the
   // "click lands in a gap between boxes" problem in Boxes mode:
@@ -451,12 +468,28 @@ export function attachWarehouse(
 
       if (boxesMode) {
         const plan = planStack(pallet.boxes, pallet.sku);
+        const BOX_INSET = 0.94;   // colored box shrunk to 94% → 6% black border
         for (const p of plan.placements) {
           const bx = (p.x + p.width / 2 - PALLET_W / 2) * BOX_SCALE_X;
           const by = (p.z + p.height / 2 - PALLET_H / 2) * BOX_SCALE_Y;
           const bz = (p.y + p.depth / 2 - PALLET_D / 2) * BOX_SCALE_Z;
+
+          // Outline at full scale (its back faces become visible borders)
           boxDummy.position.set(pos.x + bx, pos.y + by, pos.z + bz);
-          boxDummy.scale.set(p.width * BOX_SCALE_X, p.height * BOX_SCALE_Y, p.depth * BOX_SCALE_Z);
+          boxDummy.scale.set(
+            p.width * BOX_SCALE_X,
+            p.height * BOX_SCALE_Y,
+            p.depth * BOX_SCALE_Z,
+          );
+          boxDummy.updateMatrix();
+          boxOutlineMesh.setMatrixAt(boxN, boxDummy.matrix);
+
+          // Colored box slightly inset
+          boxDummy.scale.set(
+            p.width * BOX_SCALE_X * BOX_INSET,
+            p.height * BOX_SCALE_Y * BOX_INSET,
+            p.depth * BOX_SCALE_Z * BOX_INSET,
+          );
           boxDummy.updateMatrix();
           boxMesh.setMatrixAt(boxN, boxDummy.matrix);
           boxMesh.setColorAt(boxN, colour);
@@ -464,6 +497,7 @@ export function attachWarehouse(
           boxN++;
         }
       } else {
+
         palletDummy.position.copy(pos);
         palletDummy.updateMatrix();
         palletMesh.setMatrixAt(palletN, palletDummy.matrix);
@@ -490,6 +524,10 @@ export function attachWarehouse(
     boxMesh.visible = boxesMode;
     boxMesh.instanceMatrix.needsUpdate = true;
     if (boxMesh.instanceColor) boxMesh.instanceColor.needsUpdate = true;
+
+    boxOutlineMesh.count = boxN;
+    boxOutlineMesh.visible = boxesMode;
+    boxOutlineMesh.instanceMatrix.needsUpdate = true;
 
     pickProxyMesh.count = proxyN;
     pickProxyMesh.instanceMatrix.needsUpdate = true;
