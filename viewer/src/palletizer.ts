@@ -64,172 +64,147 @@ export function pickBoxForSku(sku: string): BoxSpec {
   return BOX_SPECS[hashSku(sku) % BOX_SPECS.length];
 }
 
-// ─── Local (unpositioned) pattern definitions ─────────────────────
-// All coordinates in mm, origin at (0, 0) = top-left of the pattern.
-// `w` = width along pallet X axis, `d` = depth along pallet Y axis.
+// ─── Local pattern definitions ─────────────────────────────────────
+// All local coordinates assume origin at (0,0), boxes placed in a
+// bounding box of `width` × `depth`. Fitting is checked separately.
 
 interface LocalBox { x: number; y: number; w: number; d: number; }
-
-interface PatternVariant {
-  pattern: PatternId;
-  orientation: 'A' | 'B';
+interface PatternBase {
   layerA: LocalBox[];
   layerB: LocalBox[] | null;   // null for Column (no alternation)
-  width: number;               // total pattern width
-  depth: number;               // total pattern depth
-  boxesPerLayer: number;
+  width: number;
+  depth: number;
+}
+interface PatternVariant extends PatternBase {
+  pattern: PatternId;
+  orientation: 'A' | 'B';
 }
 
-/**
- * Pinwheel — the closed-loop pattern from the sketch.
- * 6 boxes: 2 horizontals (opposite corners) + 4 verticals (sides).
- * Requires: W + D ≤ PALLET_W  AND  2W + D ≤ PALLET_D  for orientation A.
- */
-function pinwheelVariant(W: number, D: number): PatternVariant | null {
-  if (W + D > PALLET_W || 2 * W + D > PALLET_D) return null;
-  const patternW = W + D;
+function pinwheelPattern(W: number, D: number): PatternBase {
   const layerA: LocalBox[] = [
-    { x: 0, y: 0, w: W, d: D },          // H top-left
-    { x: W, y: 0, w: D, d: W },          // V top-right
-    { x: W, y: W, w: D, d: W },          // V mid-right
-    { x: D, y: 2 * W, w: W, d: D },      // H bottom-right
-    { x: 0, y: D, w: D, d: W },          // V mid-left
-    { x: 0, y: D + W, w: D, d: W },      // V bot-left
+    { x: 0, y: 0, w: W, d: D },           // H top-left
+    { x: W, y: 0, w: D, d: W },           // V top-right
+    { x: W, y: W, w: D, d: W },           // V mid-right
+    { x: D, y: 2 * W, w: W, d: D },       // H bottom-right
+    { x: 0, y: D, w: D, d: W },           // V mid-left
+    { x: 0, y: D + W, w: D, d: W },       // V bot-left
   ];
+  const patternW = W + D;
   const layerB = layerA.map((p) => ({ ...p, x: patternW - p.x - p.w }));
-  return {
-    pattern: 'pinwheel',
-    orientation: 'A',
-    layerA,
-    layerB,
-    width: patternW,
-    depth: 2 * W + D,
-    boxesPerLayer: layerA.length,
-  };
+  return { layerA, layerB, width: patternW, depth: 2 * W + D };
 }
 
-/**
- * Split-Block — 2 verticals stacked in one column + N horizontals in the other.
- * Constraints:
- *   W + D ≤ PALLET_W       (two columns fit side by side)
- *   2W     ≤ PALLET_D      (both verticals must fit within pallet depth)
- *   N = floor(2W / D)      (horizontals count matched to vertical column height)
- */
-function splitBlockVariant(W: number, D: number): PatternVariant | null {
-  if (W + D > PALLET_W || 2 * W > PALLET_D) return null;
-  const patternW = W + D;
+function splitBlockPattern(W: number, D: number): PatternBase {
   const N = Math.floor((2 * W) / D);
   const layerA: LocalBox[] = [
-    { x: 0, y: 0, w: D, d: W },          // V top-left
-    { x: 0, y: W, w: D, d: W },          // V bot-left
+    { x: 0, y: 0, w: D, d: W },           // V top-left
+    { x: 0, y: W, w: D, d: W },           // V bot-left
   ];
   for (let i = 0; i < N; i++) {
-    layerA.push({ x: D, y: i * D, w: W, d: D });  // N horizontals on right
+    layerA.push({ x: D, y: i * D, w: W, d: D });
   }
+  const patternW = W + D;
   const layerB = layerA.map((p) => ({ ...p, x: patternW - p.x - p.w }));
-  return {
-    pattern: 'split-block',
-    orientation: 'A',
-    layerA,
-    layerB,
-    width: patternW,
-    depth: 2 * W,
-    boxesPerLayer: layerA.length,
-  };
+  return { layerA, layerB, width: patternW, depth: 2 * W };
 }
 
-/**
- * Column — regular grid. Only pattern with no Layer B (all layers identical).
- */
-function columnVariant(W: number, D: number): PatternVariant | null {
-  const cols = Math.floor(PALLET_W / W);
-  const rows = Math.floor(PALLET_D / D);
-  if (cols === 0 || rows === 0) return null;
+function columnPattern(W: number, D: number, cols: number, rows: number): PatternBase {
   const layerA: LocalBox[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       layerA.push({ x: c * W, y: r * D, w: W, d: D });
     }
   }
+  return { layerA, layerB: null, width: cols * W, depth: rows * D };
+}
+
+function rotatePattern(p: PatternBase): PatternBase {
+  const rot = (b: LocalBox): LocalBox => ({
+    x: p.depth - b.y - b.d,
+    y: b.x,
+    w: b.d,
+    d: b.w,
+  });
   return {
-    pattern: 'column',
-    orientation: 'A',
-    layerA,
-    layerB: null,
-    width: cols * W,
-    depth: rows * D,
-    boxesPerLayer: layerA.length,
+    layerA: p.layerA.map(rot),
+    layerB: p.layerB ? p.layerB.map(rot) : null,
+    width: p.depth,
+    depth: p.width,
   };
 }
 
-/**
- * Rotate a variant 90° counter-clockwise (orientation A → B).
- * The whole pattern is rotated; box dimensions within it swap w ↔ d.
- */
-function rotateVariant(v: PatternVariant): PatternVariant {
-  const rotateLayer = (layer: LocalBox[]) =>
-    layer.map((p) => ({
-      x: v.depth - p.y - p.d,
-      y: p.x,
-      w: p.d,
-      d: p.w,
-    }));
-  return {
-    ...v,
-    orientation: 'B',
-    layerA: rotateLayer(v.layerA),
-    layerB: v.layerB ? rotateLayer(v.layerB) : null,
-    width: v.depth,
-    depth: v.width,
-  };
+function fits(width: number, depth: number): boolean {
+  return width <= PALLET_W && depth <= PALLET_D;
 }
 
-function fitsPallet(v: PatternVariant): boolean {
-  return v.width <= PALLET_W && v.depth <= PALLET_D;
-}
-
-// ─── Winner-takes-all selection ───────────────────────────────────
+// ─── Winner-takes-all ──────────────────────────────────────────────
 
 function chooseBestPattern(targetBoxes: number, box: BoxSpec): StackPlan {
   const W = Math.max(box.width, box.depth);
   const D = Math.min(box.width, box.depth);
 
-  // Build all candidates: 3 patterns × 2 orientations
   const candidates: PatternVariant[] = [];
-  for (const gen of [pinwheelVariant, splitBlockVariant, columnVariant]) {
-    const a = gen(W, D);
-    if (a && fitsPallet(a)) candidates.push(a);
-    if (a) {
-      const b = rotateVariant(a);
-      if (fitsPallet(b)) candidates.push(b);
-    }
+
+  // Pinwheel — A and B tried independently
+  const pin = pinwheelPattern(W, D);
+  if (fits(pin.width, pin.depth)) {
+    candidates.push({ ...pin, pattern: 'pinwheel', orientation: 'A' });
+  }
+  const pinB = rotatePattern(pin);
+  if (fits(pinB.width, pinB.depth)) {
+    candidates.push({ ...pinB, pattern: 'pinwheel', orientation: 'B' });
+  }
+
+  // Split-Block — A and B tried independently
+  const sb = splitBlockPattern(W, D);
+  if (fits(sb.width, sb.depth)) {
+    candidates.push({ ...sb, pattern: 'split-block', orientation: 'A' });
+  }
+  const sbB = rotatePattern(sb);
+  if (fits(sbB.width, sbB.depth)) {
+    candidates.push({ ...sbB, pattern: 'split-block', orientation: 'B' });
+  }
+
+  // Column — A and B are DIFFERENT grids (not rotations of each other)
+  const cA_cols = Math.floor(PALLET_W / W);
+  const cA_rows = Math.floor(PALLET_D / D);
+  if (cA_cols > 0 && cA_rows > 0) {
+    candidates.push({
+      ...columnPattern(W, D, cA_cols, cA_rows),
+      pattern: 'column',
+      orientation: 'A',
+    });
+  }
+  const cB_cols = Math.floor(PALLET_W / D);
+  const cB_rows = Math.floor(PALLET_D / W);
+  if (cB_cols > 0 && cB_rows > 0) {
+    candidates.push({
+      ...columnPattern(D, W, cB_cols, cB_rows),
+      pattern: 'column',
+      orientation: 'B',
+    });
   }
 
   if (candidates.length === 0) {
     return {
-      box,
-      pattern: 'column',
-      orientation: 'A',
-      layers: 0,
-      boxesPerLayer: 0,
-      totalPlaced: 0,
-      capacity: 0,
-      targetBoxes,
-      placements: [],
+      box, pattern: 'column', orientation: 'A',
+      layers: 0, boxesPerLayer: 0, totalPlaced: 0, capacity: 0,
+      targetBoxes, placements: [],
     };
   }
 
-  // Pick the pattern with the highest boxes per layer
+  // Strict `>` keeps the first candidate on ties — Pinwheel/Split-Block
+  // win over Column, and orientation A wins over B, when counts are equal.
   let best = candidates[0];
   for (const c of candidates) {
-    if (c.boxesPerLayer > best.boxesPerLayer) best = c;
+    if (c.layerA.length > best.layerA.length) best = c;
   }
 
+  const perLayer = best.layerA.length;
   const maxLayers = Math.max(1, Math.floor(PALLET_H / box.height));
-  const capacity = best.boxesPerLayer * maxLayers;
+  const capacity = perLayer * maxLayers;
   const totalPlaced = Math.min(targetBoxes, capacity);
 
-  // Center the pattern on the pallet (equal margins on all sides)
   const offsetX = (PALLET_W - best.width) / 2;
   const offsetY = (PALLET_D - best.depth) / 2;
 
@@ -259,7 +234,7 @@ function chooseBestPattern(targetBoxes: number, box: BoxSpec): StackPlan {
     pattern: best.pattern,
     orientation: best.orientation,
     layers: layerCount,
-    boxesPerLayer: best.boxesPerLayer,
+    boxesPerLayer: perLayer,
     totalPlaced,
     capacity,
     targetBoxes,
