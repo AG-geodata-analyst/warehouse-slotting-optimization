@@ -84,8 +84,24 @@ function disposeMini3D(): void {
     miniControls.dispose();
     miniControls = null;
   }
+
+  // Dispose all geometries and materials before releasing the renderer,
+  // otherwise GPU memory stays allocated until the next GC pass.
+  if (miniScene) {
+    miniScene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else if (mat) mat.dispose();
+    });
+  }
+
   if (miniRenderer) {
     miniRenderer.dispose();
+    // Explicitly release the WebGL context so the browser's context pool
+    // doesn't leak — this is the fix for the "white screen after N clicks".
+    miniRenderer.forceContextLoss();
     miniRenderer = null;
   }
   miniScene = null;
@@ -96,7 +112,7 @@ function disposeMini3D(): void {
   }
 }
 
-function createMini3D(container: HTMLDivElement, plan: StackPlan): void {
+function createMini3D(container: HTMLDivElement, plans: StackPlan[]): void {
   disposeMini3D();
   miniContainerEl = container;
 
@@ -138,20 +154,37 @@ function createMini3D(container: HTMLDivElement, plan: StackPlan): void {
   scene.add(base);
 
   // Boxes
+  // Boxes — render every pallet in the batch, placed side by side along X.
   const boxMat = new THREE.MeshStandardMaterial({ color: 0xe0c89a, roughness: 0.85 });
-  for (const p of plan.placements) {
-    const geom = new THREE.BoxGeometry(p.width * 0.98, p.height * 0.98, p.depth * 0.98);
-    const mesh = new THREE.Mesh(geom, boxMat);
-    mesh.position.set(
-      p.x + p.width / 2,
-      baseH + p.z + p.height / 2,
-      p.y + p.depth / 2,
-    );
-    scene.add(mesh);
+  const palletGap = PALLET_W * 1.15;  // 15% gap between pallets
+  for (let i = 0; i < plans.length; i++) {
+    const plan = plans[i];
+    const offsetX = i * palletGap;
+    // Optional: a wooden deck per pallet
+    if (i > 0) {
+      const extraBase = new THREE.Mesh(
+        new THREE.BoxGeometry(PALLET_W, baseH, PALLET_D),
+        new THREE.MeshStandardMaterial({ color: 0xb78d56, roughness: 0.9 }),
+      );
+      extraBase.position.set(PALLET_W / 2 + offsetX, baseH / 2, PALLET_D / 2);
+      scene.add(extraBase);
+    }
+    for (const p of plan.placements) {
+      const geom = new THREE.BoxGeometry(p.width * 0.98, p.height * 0.98, p.depth * 0.98);
+      const mesh = new THREE.Mesh(geom, boxMat);
+      mesh.position.set(
+        p.x + p.width / 2 + offsetX,
+        baseH + p.z + p.height / 2,
+        p.y + p.depth / 2,
+      );
+      scene.add(mesh);
+    }
   }
 
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(PALLET_W / 2, baseH + 700, PALLET_D / 2);
+  const totalWidth = PALLET_W + (plans.length - 1) * palletGap;
+  controls.target.set(totalWidth / 2, baseH + 700, PALLET_D / 2);
+
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.autoRotate = true;
@@ -278,6 +311,15 @@ function render2DPlans(
 // ─── Panel HTML ──────────────────────────────────────────────────────
 
 function buildPanelHtml(ctx: PanelContext, plans: StackPlan[]): string {
+  if (plans.length === 0) {
+    return (
+      `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">` +
+      `<div style="font-weight:600;">Pallet · ${ctx.slotId}</div>` +
+      `<button data-action="close" style="background:none;border:1px solid #444;color:#ccc;border-radius:4px;padding:2px 8px;cursor:pointer;">✕</button>` +
+      `</div>` +
+      `<div style="padding:12px;font-size:12px;opacity:0.7;">No boxes to preview for this pallet (boxes = 0).</div>`
+    );
+  }
   const ageSym = ctx.ageDays <= 7 ? '●' : ctx.ageDays <= 14 ? '▲' : '✕';
   const q = ctx.quality;
   const qLabel = q ? QUALITY_LABEL[q] : '—';
@@ -324,11 +366,13 @@ export function openPanel(ctx: PanelContext): void {
   panel.innerHTML = buildPanelHtml(ctx, currentPlans);
   panel.style.transform = 'translateX(0)';
 
+
   const mini = panel.querySelector('#mini-3d') as HTMLDivElement | null;
   if (mini && currentPlans.length > 0) {
     try {
-      createMini3D(mini, currentPlans[0]);
+      createMini3D(mini, currentPlans);
     } catch (e) {
+
       console.warn('[panel] mini-3D init failed', e);
       mini.innerHTML = '<div style="padding:12px;font-size:11px;opacity:0.6;">3D preview unavailable in this browser.</div>';
     }
