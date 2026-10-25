@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { WarehouseLayout } from './types';
 import type { WarehouseState } from './replay';
 import type { Quality } from './slotting';
+import { planStack, PALLET_W, PALLET_D, PALLET_H } from './palletizer';
 
 const SLOT_WIDTH_M = 1.2;
 const SLOT_DEPTH_M = 1.0;
@@ -12,32 +13,39 @@ const FLOOR_HEIGHT_M = 5.0;
 const SLOT_BOX_SCALE = 0.85;
 const PALLET_BOX_SCALE = 0.70;
 
-// Base floor colours — slot mesh uses these directly; pallets use brightened siblings.
+// Scene-space pallet box dimensions (blocks view).
+const PALLET_SCENE_W = SLOT_WIDTH_M * PALLET_BOX_SCALE;
+const PALLET_SCENE_H = SLOT_HEIGHT_M * PALLET_BOX_SCALE;
+const PALLET_SCENE_D = SLOT_DEPTH_M * PALLET_BOX_SCALE;
+
+// Scaling from plan mm → scene meters.
+const BOX_SCALE_X = PALLET_SCENE_W / PALLET_W;
+const BOX_SCALE_Y = PALLET_SCENE_H / PALLET_H;
+const BOX_SCALE_Z = PALLET_SCENE_D / PALLET_D;
+
+// Conservative max boxes per pallet (column pattern on Rect S tops out at 160).
+const MAX_BOXES_PER_PALLET = 200;
+
 const FLOOR_COLORS: Record<string, number> = {
   B1: 0x3b5b7a,
   '1F': 0x5c9b76,
   '2F': 0x9b7a5c,
 };
 
-// Age thresholds — tune freely.
 export const AGE_FRESH_MAX_DAYS = 7;
 export const AGE_AGING_MAX_DAYS = 14;
 
-// Fast-mover pallet tint (only used when quality mode is OFF).
 const FAST_MOVER_PALLET = 0xd94a4a;
 
-// Placement-quality pallet tints (only used when quality mode is ON).
 const QUALITY_COLOURS: Record<Quality, number> = {
   good: 0x4caf50,
   misplaced: 0xe53935,
   wasted: 0xffb300,
 };
 
-// Symbol plane geometry.
 const SYMBOL_SIZE = 0.28;
 const SYMBOL_INSET = 0.02;
 const SYMBOL_OPACITY = 0.88;
-
 
 export interface SceneHandle {
   renderer: THREE.WebGLRenderer;
@@ -48,8 +56,8 @@ export interface SceneHandle {
     state: WarehouseState,
     fastSkus: Set<string>,
     qualityMode?: Map<string, Quality> | null,
+    boxesMode?: boolean,
   ) => void;
-  /** Returns slot id of the pallet under the given client coords, or null. */
   pickPallet: (clientX: number, clientY: number) => string | null;
 }
 
@@ -121,7 +129,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(5, 0, 5);
-  
+
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI * 0.95;
@@ -155,7 +163,6 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
     updatePallets: () => {},
     pickPallet: () => null,
   };
-
 }
 
 export function attachWarehouse(
@@ -215,11 +222,11 @@ export function attachWarehouse(
   if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
   scene.add(slotMesh);
 
-  // ─── Pallet mesh ────────────────────────────────────────────────────
+  // ─── Pallet mesh (blocks view) ─────────────────────────────────────
   const palletGeom = new THREE.BoxGeometry(
-    SLOT_WIDTH_M * PALLET_BOX_SCALE,
-    SLOT_HEIGHT_M * PALLET_BOX_SCALE,
-    SLOT_DEPTH_M * PALLET_BOX_SCALE,
+    PALLET_SCENE_W,
+    PALLET_SCENE_H,
+    PALLET_SCENE_D,
   );
   const palletMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -233,6 +240,23 @@ export function attachWarehouse(
   );
   palletMesh.count = 0;
   scene.add(palletMesh);
+
+  // ─── Boxes mesh (boxes view) ───────────────────────────────────────
+  const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+  const boxMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.85,
+    metalness: 0.0,
+  });
+  const boxCapacity = totalSlots * MAX_BOXES_PER_PALLET;
+  const boxMesh = new THREE.InstancedMesh(boxGeom, boxMat, boxCapacity);
+  boxMesh.instanceColor = new THREE.InstancedBufferAttribute(
+    new Float32Array(boxCapacity * 3),
+    3,
+  );
+  boxMesh.count = 0;
+  boxMesh.visible = false;
+  scene.add(boxMesh);
 
   // ─── Age symbol planes ─────────────────────────────────────────────
   const symbolGeom = new THREE.PlaneGeometry(SYMBOL_SIZE, SYMBOL_SIZE);
@@ -263,28 +287,27 @@ export function attachWarehouse(
   scene.add(symbolMeshes[0], symbolMeshes[1], symbolMeshes[2]);
 
   const palletDummy = new THREE.Object3D();
+  const boxDummy = new THREE.Object3D();
   const symbolDummy = new THREE.Object3D();
 
   // Raycaster state for click picking
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
   const slotIdByInstance = new Map<number, string>();
+  const boxSlotIdByInstance = new Map<number, string>();
 
   // Symbol is anchored to the PALLET's front-top-right corner.
-  const palletHalfW = (SLOT_WIDTH_M * PALLET_BOX_SCALE) / 2;
-  const palletHalfH = (SLOT_HEIGHT_M * PALLET_BOX_SCALE) / 2;
-  const palletHalfD = (SLOT_DEPTH_M * PALLET_BOX_SCALE) / 2;
+  const palletHalfW = PALLET_SCENE_W / 2;
+  const palletHalfH = PALLET_SCENE_H / 2;
+  const palletHalfD = PALLET_SCENE_D / 2;
   const symX = palletHalfW - SYMBOL_SIZE / 2 - SYMBOL_INSET;
   const symY = palletHalfH - SYMBOL_SIZE / 2 - SYMBOL_INSET;
   const symZ = palletHalfD + 0.01;
 
-    // ─── Dispatch origin indicator ─────────────────────────────────────
-  // Matches DISPATCH_X / DISPATCH_Z in slotting.ts — the reference point
-  // every "avg distance" KPI is measured from.
+  // ─── Dispatch origin indicator ─────────────────────────────────────
   const dispatchColour = 0x00e5ff;
   const groundY = -FLOOR_HEIGHT_M * 1.6 + 0.02;
 
-  // Pulsing ground ring
   const ringGeom = new THREE.RingGeometry(0.6, 0.9, 48);
   const ringMat = new THREE.MeshBasicMaterial({
     color: dispatchColour,
@@ -302,7 +325,6 @@ export function attachWarehouse(
   };
   scene.add(ringMesh);
 
-  // Filled dot at the exact origin
   const dotGeom = new THREE.CircleGeometry(0.35, 32);
   const dotMat = new THREE.MeshBasicMaterial({
     color: dispatchColour,
@@ -316,7 +338,6 @@ export function attachWarehouse(
   dotMesh.renderOrder = 2;
   scene.add(dotMesh);
 
-  // Vertical beacon — visible from any orbit angle
   const BEACON_HEIGHT = 3.0;
   const beaconGeom = new THREE.CylinderGeometry(0.05, 0.05, BEACON_HEIGHT, 12, 1, true);
   const beaconMat = new THREE.MeshBasicMaterial({
@@ -331,8 +352,6 @@ export function attachWarehouse(
   beaconMesh.renderOrder = 2;
   scene.add(beaconMesh);
 
-  // "DISPATCH" text sprite — billboards toward camera, depthTest off
-  // so the label is always findable even behind geometry.
   const labelCanvas = document.createElement('canvas');
   labelCanvas.width = 512;
   labelCanvas.height = 128;
@@ -359,9 +378,7 @@ export function attachWarehouse(
   labelSprite.renderOrder = 3;
   scene.add(labelSprite);
 
-  // Pre-built THREE.Color objects (no allocations in the render loop).
-
-  // Pre-built THREE.Color objects (no allocations in the render loop).
+  // Pre-built THREE.Color objects.
   const fallbackColour = new THREE.Color(0x888888);
   const fastMoverColour = new THREE.Color(FAST_MOVER_PALLET);
   const qualityColours: Record<Quality, THREE.Color> = {
@@ -374,21 +391,17 @@ export function attachWarehouse(
     state: WarehouseState,
     fastSkus: Set<string>,
     qualityMode: Map<string, Quality> | null = null,
+    boxesMode = false,
   ): void => {
-    let n = 0;
+    let palletN = 0;
+    let boxN = 0;
     const symbolCounts: [number, number, number] = [0, 0, 0];
-
-
     slotIdByInstance.clear();
+    boxSlotIdByInstance.clear();
+
     for (const [slotId, pallet] of state.slots) {
       const pos = slotPositions.get(slotId);
       if (!pos) continue;
-
-      palletDummy.position.copy(pos);
-      palletDummy.updateMatrix();
-      palletMesh.setMatrixAt(n, palletDummy.matrix);
-      slotIdByInstance.set(n, slotId);
-
 
       let colour: THREE.Color;
       if (qualityMode) {
@@ -399,25 +412,48 @@ export function attachWarehouse(
       } else {
         colour = slotPalletColors.get(slotId) ?? fallbackColour;
       }
-      palletMesh.setColorAt(n, colour);
-      n++;
+
+      if (boxesMode) {
+        const plan = planStack(pallet.boxes, pallet.sku);
+        for (const p of plan.placements) {
+          const bx = (p.x + p.width / 2 - PALLET_W / 2) * BOX_SCALE_X;
+          const by = (p.z + p.height / 2 - PALLET_H / 2) * BOX_SCALE_Y;
+          const bz = (p.y + p.depth / 2 - PALLET_D / 2) * BOX_SCALE_Z;
+          boxDummy.position.set(pos.x + bx, pos.y + by, pos.z + bz);
+          boxDummy.scale.set(p.width * BOX_SCALE_X, p.height * BOX_SCALE_Y, p.depth * BOX_SCALE_Z);
+          boxDummy.updateMatrix();
+          boxMesh.setMatrixAt(boxN, boxDummy.matrix);
+          boxMesh.setColorAt(boxN, colour);
+          boxSlotIdByInstance.set(boxN, slotId);
+          boxN++;
+        }
+      } else {
+        palletDummy.position.copy(pos);
+        palletDummy.updateMatrix();
+        palletMesh.setMatrixAt(palletN, palletDummy.matrix);
+        palletMesh.setColorAt(palletN, colour);
+        slotIdByInstance.set(palletN, slotId);
+        palletN++;
+      }
 
       const age = state.ageDays.get(pallet.id) ?? 0;
       const bucket: 0 | 1 | 2 =
         age <= AGE_FRESH_MAX_DAYS ? 0 : age <= AGE_AGING_MAX_DAYS ? 1 : 2;
-
       symbolDummy.position.set(pos.x + symX, pos.y + symY, pos.z + symZ);
       symbolDummy.rotation.set(0, 0, 0);
       symbolDummy.updateMatrix();
-      symbolMeshes[bucket].setMatrixAt(
-        symbolCounts[bucket]++,
-        symbolDummy.matrix,
-      );
+      symbolMeshes[bucket].setMatrixAt(symbolCounts[bucket]++, symbolDummy.matrix);
     }
 
-    palletMesh.count = n;
+    palletMesh.count = palletN;
+    palletMesh.visible = !boxesMode;
     palletMesh.instanceMatrix.needsUpdate = true;
     if (palletMesh.instanceColor) palletMesh.instanceColor.needsUpdate = true;
+
+    boxMesh.count = boxN;
+    boxMesh.visible = boxesMode;
+    boxMesh.instanceMatrix.needsUpdate = true;
+    if (boxMesh.instanceColor) boxMesh.instanceColor.needsUpdate = true;
 
     for (let b = 0; b < 3; b++) {
       symbolMeshes[b].count = symbolCounts[b];
@@ -432,10 +468,14 @@ export function attachWarehouse(
     pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointerNdc, handle.camera);
-    const hits = raycaster.intersectObject(palletMesh);
+    const hits = raycaster.intersectObjects([palletMesh, boxMesh]);
     for (const h of hits) {
-      if (h.instanceId !== undefined) {
+      if (h.instanceId === undefined) continue;
+      if (h.object === palletMesh) {
         const sid = slotIdByInstance.get(h.instanceId);
+        if (sid) return sid;
+      } else if (h.object === boxMesh) {
+        const sid = boxSlotIdByInstance.get(h.instanceId);
         if (sid) return sid;
       }
     }

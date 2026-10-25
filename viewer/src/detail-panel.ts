@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Pallet } from './types';
 import type { Quality } from './slotting';
 import { planStack, PATTERN_LABEL, PALLET_W, PALLET_D, PALLET_H, type StackPlan } from './palletizer';
@@ -24,6 +26,14 @@ let panelHost: HTMLDivElement | null = null;
 let overlayHost: HTMLDivElement | null = null;
 let current: PanelContext | null = null;
 let currentPlans: StackPlan[] = [];
+
+// Mini-3D state
+let miniRenderer: THREE.WebGLRenderer | null = null;
+let miniScene: THREE.Scene | null = null;
+let miniCamera: THREE.PerspectiveCamera | null = null;
+let miniControls: OrbitControls | null = null;
+let miniAnimId = 0;
+let miniContainerEl: HTMLDivElement | null = null;
 
 function ensureHosts(): { panel: HTMLDivElement; overlay: HTMLDivElement } {
   if (!panelHost) {
@@ -62,6 +72,106 @@ function buildPlans(totalBoxes: number, sku: string): StackPlan[] {
   }
   return plans;
 }
+
+// ─── Mini 3D (panel preview) ────────────────────────────────────────
+
+function disposeMini3D(): void {
+  if (miniAnimId) {
+    cancelAnimationFrame(miniAnimId);
+    miniAnimId = 0;
+  }
+  if (miniControls) {
+    miniControls.dispose();
+    miniControls = null;
+  }
+  if (miniRenderer) {
+    miniRenderer.dispose();
+    miniRenderer = null;
+  }
+  miniScene = null;
+  miniCamera = null;
+  if (miniContainerEl) {
+    miniContainerEl.innerHTML = '';
+    miniContainerEl = null;
+  }
+}
+
+function createMini3D(container: HTMLDivElement, plan: StackPlan): void {
+  disposeMini3D();
+  miniContainerEl = container;
+
+  const width = container.clientWidth || 308;
+  const height = container.clientHeight || 240;
+
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = `display:block;width:100%;height:${height}px;`;
+  container.appendChild(canvas);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(width, height, false);
+  miniRenderer = renderer;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0a0a);
+  miniScene = scene;
+
+  const camera = new THREE.PerspectiveCamera(45, width / height, 10, 10000);
+  camera.position.set(1600, 1800, 1600);
+  miniCamera = camera;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  keyLight.position.set(2000, 3000, 2000);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0x99bbff, 0.35);
+  fillLight.position.set(-2000, 1000, -1500);
+  scene.add(fillLight);
+
+  // Wooden deck
+  const baseH = 144;
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(PALLET_W, baseH, PALLET_D),
+    new THREE.MeshStandardMaterial({ color: 0xb78d56, roughness: 0.9 }),
+  );
+  base.position.set(PALLET_W / 2, baseH / 2, PALLET_D / 2);
+  scene.add(base);
+
+  // Boxes
+  const boxMat = new THREE.MeshStandardMaterial({ color: 0xe0c89a, roughness: 0.85 });
+  for (const p of plan.placements) {
+    const geom = new THREE.BoxGeometry(p.width * 0.98, p.height * 0.98, p.depth * 0.98);
+    const mesh = new THREE.Mesh(geom, boxMat);
+    mesh.position.set(
+      p.x + p.width / 2,
+      baseH + p.z + p.height / 2,
+      p.y + p.depth / 2,
+    );
+    scene.add(mesh);
+  }
+
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(PALLET_W / 2, baseH + 700, PALLET_D / 2);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 1.2;
+  controls.minDistance = 1000;
+  controls.maxDistance = 4500;
+  controls.maxPolarAngle = Math.PI * 0.48;
+  miniControls = controls;
+
+  const animate = () => {
+    miniAnimId = requestAnimationFrame(animate);
+    if (miniControls) miniControls.update();
+    if (miniRenderer && miniScene && miniCamera) {
+      miniRenderer.render(miniScene, miniCamera);
+    }
+  };
+  animate();
+}
+
+// ─── 2D isometric (open full view overlay) ──────────────────────────
 
 function projectPoint(x: number, y: number, z: number): { sx: number; sy: number } {
   const cos30 = Math.cos(Math.PI / 6);
@@ -127,7 +237,7 @@ function drawPlanIntoRect(
   }
 }
 
-function renderPlans(
+function render2DPlans(
   canvas: HTMLCanvasElement,
   plans: StackPlan[],
   labels: boolean,
@@ -165,6 +275,8 @@ function renderPlans(
   }
 }
 
+// ─── Panel HTML ──────────────────────────────────────────────────────
+
 function buildPanelHtml(ctx: PanelContext, plans: StackPlan[]): string {
   const ageSym = ctx.ageDays <= 7 ? '●' : ctx.ageDays <= 14 ? '▲' : '✕';
   const q = ctx.quality;
@@ -186,8 +298,8 @@ function buildPanelHtml(ctx: PanelContext, plans: StackPlan[]): string {
     `<div style="font-weight:600;">Pallet · ${ctx.slotId}</div>` +
     `<button data-action="close" style="background:none;border:1px solid #444;color:#ccc;border-radius:4px;padding:2px 8px;cursor:pointer;">✕</button>` +
     `</div>` +
-    `<canvas id="pallet-preview" width="308" height="240" style="width:100%;background:#0a0a0a;border-radius:4px;margin-bottom:6px;"></canvas>` +
-    `<div style="font-size:10px;opacity:0.5;margin-bottom:14px;">EUR1 pallet · ${PALLET_W} × ${PALLET_D} mm</div>` +
+    `<div id="mini-3d" style="width:100%;height:240px;background:#0a0a0a;border-radius:4px;margin-bottom:6px;overflow:hidden;position:relative;"></div>` +
+    `<div style="font-size:10px;opacity:0.5;margin-bottom:14px;">EUR1 pallet · ${PALLET_W} × ${PALLET_D} mm · drag to rotate</div>` +
     `<div style="margin-bottom:6px;"><span style="opacity:0.6">SKU</span> · <code style="color:#9cf;">${ctx.pallet.sku}</code></div>` +
     `<div style="margin-bottom:6px;"><span style="opacity:0.6">Boxes</span> · ${palletSummary}</div>` +
     `<div style="margin-bottom:6px;"><span style="opacity:0.6">Weight</span> · ${ctx.pallet.gross_weight_kg.toFixed(1)} kg</div>` +
@@ -201,7 +313,7 @@ function buildPanelHtml(ctx: PanelContext, plans: StackPlan[]): string {
     (overflow > 0
       ? `<div style="color:#ffb300;font-size:11px;margin-bottom:8px;">⚠ ${overflow} box(es) exceed the plan's capacity — data anomaly</div>`
       : '') +
-    `<button data-action="fullview" style="width:100%;padding:8px;background:#1e3a5f;border:1px solid #3b6ea5;color:#fff;border-radius:4px;cursor:pointer;margin-top:12px;font:inherit;">Open full view</button>`
+    `<button data-action="fullview" style="width:100%;padding:8px;background:#1e3a5f;border:1px solid #3b6ea5;color:#fff;border-radius:4px;cursor:pointer;margin-top:12px;font:inherit;">Open 2D plan view (all pallets)</button>`
   );
 }
 
@@ -211,11 +323,20 @@ export function openPanel(ctx: PanelContext): void {
   const { panel } = ensureHosts();
   panel.innerHTML = buildPanelHtml(ctx, currentPlans);
   panel.style.transform = 'translateX(0)';
-  const canvas = panel.querySelector('#pallet-preview') as HTMLCanvasElement | null;
-  if (canvas) renderPlans(canvas, currentPlans, false);
+
+  const mini = panel.querySelector('#mini-3d') as HTMLDivElement | null;
+  if (mini && currentPlans.length > 0) {
+    try {
+      createMini3D(mini, currentPlans[0]);
+    } catch (e) {
+      console.warn('[panel] mini-3D init failed', e);
+      mini.innerHTML = '<div style="padding:12px;font-size:11px;opacity:0.6;">3D preview unavailable in this browser.</div>';
+    }
+  }
 }
 
 export function closePanel(): void {
+  disposeMini3D();
   current = null;
   currentPlans = [];
   if (panelHost) panelHost.style.transform = 'translateX(100%)';
@@ -234,7 +355,7 @@ export function bindPanelEvents(): void {
     if (action === 'close') closePanel();
     if (action === 'fullview' && currentPlans.length > 0) {
       const c = overlay.querySelector('canvas') as HTMLCanvasElement | null;
-      if (c) renderPlans(c, currentPlans, true);
+      if (c) render2DPlans(c, currentPlans, true);
       overlay.style.display = 'flex';
     }
   });

@@ -121,12 +121,14 @@ async function init(): Promise<void> {
 
     let currentIndex = days.length - 1;
     let qualityOn = true;
+    let boxesMode = false;
 
     const showDay = (index: number): void => {
       currentIndex = index;
       const state = timeline[index];
+
       const analysis = qualityOn ? analyzePlacement(state, layout, skuVelocity) : null;
-      handle.updatePallets(state, insights.fastSkus, analysis?.slotQuality ?? null);
+      handle.updatePallets(state, insights.fastSkus, analysis?.slotQuality ?? null, boxesMode);
 
       if (dayLabel) dayLabel.textContent = days[index].date;
       if (dayPallets) dayPallets.textContent = `${state.slots.size} pallets`;
@@ -206,6 +208,24 @@ async function init(): Promise<void> {
       qualityBtn.textContent = `Quality: ${qualityOn ? 'On' : 'Off'}`;
       qualityBtn.style.background = qualityOn ? '#2e4a2e' : '#1e1e1e';
       qualityBtn.style.borderColor = qualityOn ? '#4caf50' : '#555';
+      showDay(currentIndex);
+    });
+
+    // ─── Blocks / Boxes view toggle ──────────────────────────────────
+    const boxesViewBtn = document.createElement('button');
+    boxesViewBtn.type = 'button';
+    boxesViewBtn.textContent = 'View: Blocks';
+    boxesViewBtn.style.cssText =
+      'margin-left:8px;padding:4px 10px;border-radius:4px;' +
+      'border:1px solid #555;background:#1e1e1e;color:#eee;' +
+      'font:inherit;cursor:pointer;';
+    dayControls?.appendChild(boxesViewBtn);
+
+    boxesViewBtn.addEventListener('click', () => {
+      boxesMode = !boxesMode;
+      boxesViewBtn.textContent = `View: ${boxesMode ? 'Boxes' : 'Blocks'}`;
+      boxesViewBtn.style.background = boxesMode ? '#3a2e4a' : '#1e1e1e';
+      boxesViewBtn.style.borderColor = boxesMode ? '#8a6ea5' : '#555';
       showDay(currentIndex);
     });
 
