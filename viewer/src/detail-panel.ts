@@ -113,7 +113,6 @@ function disposeMini3D(): void {
 function createMini3D(
   container: HTMLDivElement,
   plans: StackPlan[],
-  colorHex: string,
 ): void {
   disposeMini3D();
   miniContainerEl = container;
@@ -157,11 +156,12 @@ function createMini3D(
 
   // Boxes — render every pallet in the batch, placed side by side along X.
   const boxMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(colorHex),
+    color: 0xe0c89a,   // cardboard / wooden box tone (matches the deck feel)
     roughness: 0.85,
     transparent: true,
     opacity: 0.88,
   });
+
   const outlineMat = new THREE.MeshBasicMaterial({
     color: 0x000000,
     side: THREE.BackSide,
@@ -393,7 +393,7 @@ export function openPanel(ctx: PanelContext): void {
   const mini = panel.querySelector('#mini-3d') as HTMLDivElement | null;
   if (mini && currentPlans.length > 0) {
     try {
-      createMini3D(mini, currentPlans, ctx.slotColor ?? '#e0c89a');
+      createMini3D(mini, currentPlans);
     } catch (e) {
       console.warn('[panel] mini-3D init failed', e);
       mini.innerHTML = '<div style="padding:12px;font-size:11px;opacity:0.6;">3D preview unavailable in this browser.</div>';
