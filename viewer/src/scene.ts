@@ -258,6 +258,32 @@ export function attachWarehouse(
   boxMesh.visible = false;
   scene.add(boxMesh);
 
+  // ─── Pick proxy (invisible, raycast-only) ──────────────────────────
+  // Covers each occupied slot's full pallet footprint. Solves the
+  // "click lands in a gap between boxes" problem in Boxes mode:
+  // the raycaster hits the proxy even when no box surface is there.
+  // colorWrite:false keeps it invisible without setting visible:false
+  // (visible:false would make the raycaster skip it too).
+  const pickProxyGeom = new THREE.BoxGeometry(
+    PALLET_SCENE_W,
+    PALLET_SCENE_H,
+    PALLET_SCENE_D,
+  );
+  const pickProxyMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    colorWrite: false,
+  });
+  const pickProxyMesh = new THREE.InstancedMesh(
+    pickProxyGeom,
+    pickProxyMat,
+    totalSlots,
+  );
+  pickProxyMesh.count = 0;
+  scene.add(pickProxyMesh);
+
   // ─── Age symbol planes ─────────────────────────────────────────────
   const symbolGeom = new THREE.PlaneGeometry(SYMBOL_SIZE, SYMBOL_SIZE);
 
@@ -295,6 +321,7 @@ export function attachWarehouse(
   const pointerNdc = new THREE.Vector2();
   const slotIdByInstance = new Map<number, string>();
   const boxSlotIdByInstance = new Map<number, string>();
+  const proxySlotIdByInstance = new Map<number, string>();
 
   // Symbol is anchored to the PALLET's front-top-right corner.
   const palletHalfW = PALLET_SCENE_W / 2;
@@ -395,13 +422,22 @@ export function attachWarehouse(
   ): void => {
     let palletN = 0;
     let boxN = 0;
+    let proxyN = 0;
     const symbolCounts: [number, number, number] = [0, 0, 0];
     slotIdByInstance.clear();
     boxSlotIdByInstance.clear();
+    proxySlotIdByInstance.clear();
 
     for (const [slotId, pallet] of state.slots) {
       const pos = slotPositions.get(slotId);
       if (!pos) continue;
+
+      // Pick proxy — always populated regardless of view mode
+      palletDummy.position.copy(pos);
+      palletDummy.updateMatrix();
+      pickProxyMesh.setMatrixAt(proxyN, palletDummy.matrix);
+      proxySlotIdByInstance.set(proxyN, slotId);
+      proxyN++;
 
       let colour: THREE.Color;
       if (qualityMode) {
@@ -455,6 +491,9 @@ export function attachWarehouse(
     boxMesh.instanceMatrix.needsUpdate = true;
     if (boxMesh.instanceColor) boxMesh.instanceColor.needsUpdate = true;
 
+    pickProxyMesh.count = proxyN;
+    pickProxyMesh.instanceMatrix.needsUpdate = true;
+
     for (let b = 0; b < 3; b++) {
       symbolMeshes[b].count = symbolCounts[b];
       symbolMeshes[b].instanceMatrix.needsUpdate = true;
@@ -468,14 +507,14 @@ export function attachWarehouse(
     pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointerNdc, handle.camera);
-    const hits = raycaster.intersectObjects([palletMesh, boxMesh]);
-    for (const h of hits) {
-      if (h.instanceId === undefined) continue;
-      if (h.object === palletMesh) {
-        const sid = slotIdByInstance.get(h.instanceId);
-        if (sid) return sid;
-      } else if (h.object === boxMesh) {
-        const sid = boxSlotIdByInstance.get(h.instanceId);
+
+    // Pick proxy covers the full pallet footprint — works in both view
+    // modes, including clicks that land in gaps between individual boxes.
+    const proxyHits = raycaster.intersectObject(pickProxyMesh);
+    if (proxyHits.length > 0) {
+      const hit = proxyHits[0];
+      if (hit.instanceId !== undefined) {
+        const sid = proxySlotIdByInstance.get(hit.instanceId);
         if (sid) return sid;
       }
     }
