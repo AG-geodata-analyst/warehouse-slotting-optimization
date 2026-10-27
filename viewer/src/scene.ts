@@ -45,7 +45,7 @@ const SYMBOL_INSET = 0.02;
 const SYMBOL_OPACITY = 0.88;
 
 // Focus dimming: how much non-focused pallets get darkened (0=black, 1=full color).
-const DIM_FACTOR = 0.28;
+const DIM_FACTOR = 0.08;
 
 // Default view — used when focus is cleared.
 const DEFAULT_CAMERA_POS = new THREE.Vector3(-12, 14, 22);
@@ -217,8 +217,11 @@ export function attachWarehouse(
   const dummy = new THREE.Object3D();
   const slotPositions = new Map<string, THREE.Vector3>();
   const slotPalletColors = new Map<string, THREE.Color>();
+  const slotIds: string[] = [];
+  const slotBaseColors: THREE.Color[] = [];
 
   let idx = 0;
+
   for (const rack of layout.racks) {
     const floorIndex = layout.floors.indexOf(rack.floor);
     const floorY = (floorIndex - 1) * FLOOR_HEIGHT_M;
@@ -237,6 +240,8 @@ export function attachWarehouse(
 
       slotPositions.set(slot.id, new THREE.Vector3(x, y, z));
       slotPalletColors.set(slot.id, palletColour);
+      slotIds.push(slot.id);
+      slotBaseColors.push(baseColour.clone());
       idx++;
     }
   }
@@ -593,10 +598,18 @@ export function attachWarehouse(
   };
 
   handle.focusPallet = (slotId: string | null): void => {
-    // Clear focus if requested and nothing is currently focused
+    // ─── Clear focus ───────────────────────────────────────────────
     if (slotId === null) {
       if (focusFamily === null) return;
       focusFamily = null;
+
+      // Restore all slot shell colors
+      for (let i = 0; i < slotIds.length; i++) {
+        slotMesh.setColorAt(i, slotBaseColors[i]);
+      }
+      if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
+
+      // Animate camera back to default
       cameraAnim = {
         from: handle.camera.position.clone(),
         to: DEFAULT_CAMERA_POS.clone(),
@@ -612,31 +625,65 @@ export function attachWarehouse(
 
     if (!currentState) return;
     const pallet = currentState.slots.get(slotId);
-    const pos = slotPositions.get(slotId);
-    if (!pallet || !pos) return;
+    if (!pallet) return;
 
-    // Compute pallet family (splits share base id)
+    // ─── Compute pallet family (splits share base id) ──────────────
     const baseId = palletBaseId(pallet.id);
     focusFamily = new Set<string>();
     for (const [sid, p] of currentState.slots) {
       if (palletBaseId(p.id) === baseId) focusFamily.add(sid);
     }
 
-    // Animate camera to focus on the pallet (from front-right-above)
-    const target = pos.clone();
-    const offset = new THREE.Vector3(2, 3, 4);  // ~5.4 m from pallet
+    // ─── Dim slot shells not in the family ─────────────────────────
+    for (let i = 0; i < slotIds.length; i++) {
+      const sid = slotIds[i];
+      if (focusFamily.has(sid)) {
+        slotMesh.setColorAt(i, slotBaseColors[i]);
+      } else {
+        dimmedColour.copy(slotBaseColors[i]).multiplyScalar(DIM_FACTOR);
+        slotMesh.setColorAt(i, dimmedColour);
+      }
+    }
+    if (slotMesh.instanceColor) slotMesh.instanceColor.needsUpdate = true;
+
+    // ─── Compute bounding box of all focused pallets ───────────────
+    const focusedPositions: THREE.Vector3[] = [];
+    for (const sid of focusFamily) {
+      const p = slotPositions.get(sid);
+      if (p) focusedPositions.push(p);
+    }
+    if (focusedPositions.length === 0) return;
+
+    const center = new THREE.Vector3();
+    for (const p of focusedPositions) center.add(p);
+    center.divideScalar(focusedPositions.length);
+
+    let maxDist = 0;
+    for (const p of focusedPositions) {
+      const d = p.distanceTo(center);
+      if (d > maxDist) maxDist = d;
+    }
+
+    // Camera distance: base ~5.4m for single pallet, scales with extent.
+    // extentRadius covers max pallet half-width (0.42m) + safety margin.
+    const extentRadius = maxDist + 1.5;
+    const camDist = Math.max(5.4, extentRadius * 2.2);
+    const offsetDir = new THREE.Vector3(2, 3, 4).normalize().multiplyScalar(camDist);
+
     cameraAnim = {
       from: handle.camera.position.clone(),
-      to: target.clone().add(offset),
+      to: center.clone().add(offsetDir),
       fromTarget: handle.controls.target.clone(),
-      toTarget: target,
+      toTarget: center.clone(),
       t: 0,
     };
 
+    // Repaint pallets with new focus family applied
     if (lastArgs) {
       updatePallets(lastArgs.state, lastArgs.fastSkus, lastArgs.qualityMode, lastArgs.boxesMode);
     }
   };
+
 }
 
 // Applied each frame in main.ts's animate loop (see below).
