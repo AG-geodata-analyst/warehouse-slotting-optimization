@@ -1,4 +1,4 @@
-import { createScene, attachWarehouse, AGE_FRESH_MAX_DAYS, AGE_AGING_MAX_DAYS } from './scene';
+import { createScene, attachWarehouse, tickCameraAnimation, AGE_FRESH_MAX_DAYS, AGE_AGING_MAX_DAYS } from './scene';
 import { loadLayout, loadBootstrap, loadManifest, loadAllDays } from './data';
 import { buildTimeline, analyzeMovement, type WarehouseState } from './replay';
 import { analyzePlacement, computeSkuVelocity } from './slotting';
@@ -12,6 +12,7 @@ const { renderer, scene, camera, controls } = handle;
 
 function animate(): void {
   requestAnimationFrame(animate);
+  tickCameraAnimation(camera, controls);
   controls.update();
   renderer.render(scene, camera);
 }
@@ -156,6 +157,7 @@ async function init(): Promise<void> {
       }
 
       if (isPanelOpen()) closePanel();
+      handle.focusPallet(null);
     };
 
     if (dayControls) dayControls.style.display = 'flex';
@@ -247,16 +249,20 @@ async function init(): Promise<void> {
       const dx = e.clientX - downX;
       const dy = e.clientY - downY;
       if (Math.sqrt(dx * dx + dy * dy) > 5) return;  // drag, not click
+
       const slotId = handle.pickPallet(e.clientX, e.clientY);
       if (!slotId) {
         if (isPanelOpen()) closePanel();
+        handle.focusPallet(null);
         return;
       }
       const state = timeline[currentIndex];
       const pallet = state.slots.get(slotId);
       if (!pallet) return;
       const analysis = qualityOn ? analyzePlacement(state, layout, skuVelocity) : null;
+      handle.focusPallet(slotId);
       openPanel({
+
         slotId,
         pallet,
         ageDays: state.ageDays.get(pallet.id) ?? 0,
@@ -266,7 +272,10 @@ async function init(): Promise<void> {
     });
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && isPanelOpen()) closePanel();
+      if (e.key === 'Escape') {
+        if (isPanelOpen()) closePanel();
+        handle.focusPallet(null);
+      }
     });
 
     // Initial render

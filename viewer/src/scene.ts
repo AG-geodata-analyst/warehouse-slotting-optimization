@@ -13,17 +13,14 @@ const FLOOR_HEIGHT_M = 5.0;
 const SLOT_BOX_SCALE = 0.85;
 const PALLET_BOX_SCALE = 0.70;
 
-// Scene-space pallet box dimensions (blocks view).
 const PALLET_SCENE_W = SLOT_WIDTH_M * PALLET_BOX_SCALE;
 const PALLET_SCENE_H = SLOT_HEIGHT_M * PALLET_BOX_SCALE;
 const PALLET_SCENE_D = SLOT_DEPTH_M * PALLET_BOX_SCALE;
 
-// Scaling from plan mm → scene meters.
 const BOX_SCALE_X = PALLET_SCENE_W / PALLET_W;
 const BOX_SCALE_Y = PALLET_SCENE_H / PALLET_H;
 const BOX_SCALE_Z = PALLET_SCENE_D / PALLET_D;
 
-// Conservative max boxes per pallet (column pattern on Rect S tops out at 160).
 const MAX_BOXES_PER_PALLET = 200;
 
 const FLOOR_COLORS: Record<string, number> = {
@@ -47,6 +44,23 @@ const SYMBOL_SIZE = 0.28;
 const SYMBOL_INSET = 0.02;
 const SYMBOL_OPACITY = 0.88;
 
+// Focus dimming: how much non-focused pallets get darkened (0=black, 1=full color).
+const DIM_FACTOR = 0.28;
+
+// Default view — used when focus is cleared.
+const DEFAULT_CAMERA_POS = new THREE.Vector3(-12, 14, 22);
+const DEFAULT_TARGET_POS = new THREE.Vector3(5, 0, 5);
+
+// Camera animation state (module-level singleton).
+interface CameraAnim {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  fromTarget: THREE.Vector3;
+  toTarget: THREE.Vector3;
+  t: number;
+}
+let cameraAnim: CameraAnim | null = null;
+
 export interface SceneHandle {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -60,6 +74,7 @@ export interface SceneHandle {
   ) => void;
   pickPallet: (clientX: number, clientY: number) => string | null;
   getSlotColor: (slotId: string) => string;
+  focusPallet: (slotId: string | null) => void;
 }
 
 function makeSymbolTexture(kind: 'fresh' | 'aging' | 'old'): THREE.CanvasTexture {
@@ -111,6 +126,11 @@ function brighten(base: THREE.Color): THREE.Color {
   );
 }
 
+function palletBaseId(id: string): string {
+  const idx = id.indexOf('-part');
+  return idx >= 0 ? id.slice(0, idx) : id;
+}
+
 export function createScene(canvas: HTMLCanvasElement): SceneHandle {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
@@ -126,11 +146,10 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
     0.1,
     200,
   );
-  camera.position.set(-12, 14, 22);
+  camera.position.copy(DEFAULT_CAMERA_POS);
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(5, 0, 5);
-
+  controls.target.copy(DEFAULT_TARGET_POS);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI * 0.95;
@@ -164,6 +183,7 @@ export function createScene(canvas: HTMLCanvasElement): SceneHandle {
     updatePallets: () => {},
     pickPallet: () => null,
     getSlotColor: () => '#e0c89a',
+    focusPallet: () => {},
   };
 }
 
@@ -245,13 +265,11 @@ export function attachWarehouse(
 
   // ─── Boxes mesh (boxes view) ───────────────────────────────────────
   const boxGeom = new THREE.BoxGeometry(1, 1, 1);
-
   const boxMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     roughness: 0.85,
     metalness: 0.0,
   });
-
   const boxCapacity = totalSlots * MAX_BOXES_PER_PALLET;
   const boxMesh = new THREE.InstancedMesh(boxGeom, boxMat, boxCapacity);
   boxMesh.instanceColor = new THREE.InstancedBufferAttribute(
@@ -262,12 +280,9 @@ export function attachWarehouse(
   boxMesh.visible = false;
   scene.add(boxMesh);
 
-  // ─── Box outline mesh ──────────────────────────────────────────────
   const boxOutlineMat = new THREE.MeshBasicMaterial({
     color: 0x000000,
     side: THREE.BackSide,
-    transparent: true,
-    opacity: 0.65,
   });
   const boxOutlineMesh = new THREE.InstancedMesh(
     boxGeom,
@@ -278,7 +293,7 @@ export function attachWarehouse(
   boxOutlineMesh.visible = false;
   scene.add(boxOutlineMesh);
 
-  // ─── Pick proxy (invisible, raycast-only) ──────────────────────────
+  // ─── Pick proxy ────────────────────────────────────────────────────
   const pickProxyGeom = new THREE.BoxGeometry(
     PALLET_SCENE_W,
     PALLET_SCENE_H,
@@ -331,14 +346,10 @@ export function attachWarehouse(
   const boxDummy = new THREE.Object3D();
   const symbolDummy = new THREE.Object3D();
 
-  // Raycaster state for click picking
   const raycaster = new THREE.Raycaster();
   const pointerNdc = new THREE.Vector2();
-  const slotIdByInstance = new Map<number, string>();
-  const boxSlotIdByInstance = new Map<number, string>();
   const proxySlotIdByInstance = new Map<number, string>();
 
-  // Symbol is anchored to the PALLET's front-top-right corner.
   const palletHalfW = PALLET_SCENE_W / 2;
   const palletHalfH = PALLET_SCENE_H / 2;
   const palletHalfD = PALLET_SCENE_D / 2;
@@ -428,6 +439,18 @@ export function attachWarehouse(
     misplaced: new THREE.Color(QUALITY_COLOURS.misplaced),
     wasted: new THREE.Color(QUALITY_COLOURS.wasted),
   };
+  const dimmedColour = new THREE.Color();
+  const whiteColour = new THREE.Color(0xffffff);
+
+  // Focus state
+  let focusFamily: Set<string> | null = null;
+  let currentState: WarehouseState | null = null;
+  let lastArgs: {
+    state: WarehouseState;
+    fastSkus: Set<string>;
+    qualityMode: Map<string, Quality> | null;
+    boxesMode: boolean;
+  } | null = null;
 
   const updatePallets = (
     state: WarehouseState,
@@ -435,24 +458,27 @@ export function attachWarehouse(
     qualityMode: Map<string, Quality> | null = null,
     boxesMode = false,
   ): void => {
+    currentState = state;
+    lastArgs = { state, fastSkus, qualityMode, boxesMode };
+
     let palletN = 0;
     let boxN = 0;
     let proxyN = 0;
     const symbolCounts: [number, number, number] = [0, 0, 0];
-    slotIdByInstance.clear();
-    boxSlotIdByInstance.clear();
     proxySlotIdByInstance.clear();
 
     for (const [slotId, pallet] of state.slots) {
       const pos = slotPositions.get(slotId);
       if (!pos) continue;
 
-      // Pick proxy — always populated regardless of view mode
+      // Pick proxy
       palletDummy.position.copy(pos);
       palletDummy.updateMatrix();
       pickProxyMesh.setMatrixAt(proxyN, palletDummy.matrix);
       proxySlotIdByInstance.set(proxyN, slotId);
       proxyN++;
+
+      const isFocused = focusFamily === null || focusFamily.has(slotId);
 
       let colour: THREE.Color;
       if (qualityMode) {
@@ -464,15 +490,19 @@ export function attachWarehouse(
         colour = slotPalletColors.get(slotId) ?? fallbackColour;
       }
 
+      if (!isFocused) {
+        dimmedColour.copy(colour).multiplyScalar(DIM_FACTOR);
+        colour = dimmedColour;
+      }
+
       if (boxesMode) {
         const plan = planStack(pallet.boxes, pallet.sku);
-        const BOX_INSET = 0.97;   // colored box shrunk to 97% → thinner black border
+        const BOX_INSET = 0.97;
         for (const p of plan.placements) {
           const bx = (p.x + p.width / 2 - PALLET_W / 2) * BOX_SCALE_X;
           const by = (p.z + p.height / 2 - PALLET_H / 2) * BOX_SCALE_Y;
           const bz = (p.y + p.depth / 2 - PALLET_D / 2) * BOX_SCALE_Z;
 
-          // Outline at full scale (its back faces become visible borders)
           boxDummy.position.set(pos.x + bx, pos.y + by, pos.z + bz);
           boxDummy.scale.set(
             p.width * BOX_SCALE_X,
@@ -482,7 +512,6 @@ export function attachWarehouse(
           boxDummy.updateMatrix();
           boxOutlineMesh.setMatrixAt(boxN, boxDummy.matrix);
 
-          // Colored box slightly inset
           boxDummy.scale.set(
             p.width * BOX_SCALE_X * BOX_INSET,
             p.height * BOX_SCALE_Y * BOX_INSET,
@@ -491,7 +520,6 @@ export function attachWarehouse(
           boxDummy.updateMatrix();
           boxMesh.setMatrixAt(boxN, boxDummy.matrix);
           boxMesh.setColorAt(boxN, colour);
-          boxSlotIdByInstance.set(boxN, slotId);
           boxN++;
         }
       } else {
@@ -499,17 +527,19 @@ export function attachWarehouse(
         palletDummy.updateMatrix();
         palletMesh.setMatrixAt(palletN, palletDummy.matrix);
         palletMesh.setColorAt(palletN, colour);
-        slotIdByInstance.set(palletN, slotId);
         palletN++;
       }
 
+      // Age symbol — dim symbol too when unfocused
       const age = state.ageDays.get(pallet.id) ?? 0;
       const bucket: 0 | 1 | 2 =
         age <= AGE_FRESH_MAX_DAYS ? 0 : age <= AGE_AGING_MAX_DAYS ? 1 : 2;
       symbolDummy.position.set(pos.x + symX, pos.y + symY, pos.z + symZ);
       symbolDummy.rotation.set(0, 0, 0);
       symbolDummy.updateMatrix();
-      symbolMeshes[bucket].setMatrixAt(symbolCounts[bucket]++, symbolDummy.matrix);
+      const symIdx = symbolCounts[bucket]++;
+      symbolMeshes[bucket].setMatrixAt(symIdx, symbolDummy.matrix);
+      symbolMeshes[bucket].setColorAt(symIdx, isFocused ? whiteColour : dimmedColour.copy(whiteColour).multiplyScalar(DIM_FACTOR));
     }
 
     palletMesh.count = palletN;
@@ -532,6 +562,9 @@ export function attachWarehouse(
     for (let b = 0; b < 3; b++) {
       symbolMeshes[b].count = symbolCounts[b];
       symbolMeshes[b].instanceMatrix.needsUpdate = true;
+      if (symbolMeshes[b].instanceColor) {
+        symbolMeshes[b].instanceColor!.needsUpdate = true;
+      }
     }
   };
 
@@ -558,4 +591,63 @@ export function attachWarehouse(
     const c = slotPalletColors.get(slotId);
     return c ? '#' + c.getHexString() : '#e0c89a';
   };
+
+  handle.focusPallet = (slotId: string | null): void => {
+    // Clear focus if requested and nothing is currently focused
+    if (slotId === null) {
+      if (focusFamily === null) return;
+      focusFamily = null;
+      cameraAnim = {
+        from: handle.camera.position.clone(),
+        to: DEFAULT_CAMERA_POS.clone(),
+        fromTarget: handle.controls.target.clone(),
+        toTarget: DEFAULT_TARGET_POS.clone(),
+        t: 0,
+      };
+      if (lastArgs) {
+        updatePallets(lastArgs.state, lastArgs.fastSkus, lastArgs.qualityMode, lastArgs.boxesMode);
+      }
+      return;
+    }
+
+    if (!currentState) return;
+    const pallet = currentState.slots.get(slotId);
+    const pos = slotPositions.get(slotId);
+    if (!pallet || !pos) return;
+
+    // Compute pallet family (splits share base id)
+    const baseId = palletBaseId(pallet.id);
+    focusFamily = new Set<string>();
+    for (const [sid, p] of currentState.slots) {
+      if (palletBaseId(p.id) === baseId) focusFamily.add(sid);
+    }
+
+    // Animate camera to focus on the pallet (from front-right-above)
+    const target = pos.clone();
+    const offset = new THREE.Vector3(2, 3, 4);  // ~5.4 m from pallet
+    cameraAnim = {
+      from: handle.camera.position.clone(),
+      to: target.clone().add(offset),
+      fromTarget: handle.controls.target.clone(),
+      toTarget: target,
+      t: 0,
+    };
+
+    if (lastArgs) {
+      updatePallets(lastArgs.state, lastArgs.fastSkus, lastArgs.qualityMode, lastArgs.boxesMode);
+    }
+  };
+}
+
+// Applied each frame in main.ts's animate loop (see below).
+export function tickCameraAnimation(
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+): void {
+  if (!cameraAnim) return;
+  cameraAnim.t = Math.min(1, cameraAnim.t + 0.04);
+  const ease = 1 - Math.pow(1 - cameraAnim.t, 3);  // ease-out cubic
+  camera.position.lerpVectors(cameraAnim.from, cameraAnim.to, ease);
+  controls.target.lerpVectors(cameraAnim.fromTarget, cameraAnim.toTarget, ease);
+  if (cameraAnim.t >= 1) cameraAnim = null;
 }
