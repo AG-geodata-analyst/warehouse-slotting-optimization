@@ -22,6 +22,7 @@ from .layout import generate_layout, DATA_DIR
 from .models import (
     Day, InboundEvent, OutboundEvent, Pallet, WarehouseLayout,
 )
+from .palletizer import split_pallet_boxes
 
 GENESIS = date(2026, 1, 1)
 BOOTSTRAP_OCCUPANCY = 60          # pallets already in the warehouse at genesis
@@ -74,6 +75,22 @@ def _make_pallet(prefix: str, idx: int, rng: random.Random) -> Pallet:
         gross_weight_kg=round(rng.uniform(100, 800), 1),
     )
 
+def _split_pallet(pallet: Pallet) -> list[Pallet]:
+    """Split a pallet into multiple if its box count exceeds physical capacity."""
+    counts = split_pallet_boxes(pallet.boxes, pallet.sku)
+    if len(counts) == 1:
+        return [pallet]
+    total = pallet.boxes
+    result: list[Pallet] = []
+    for i, count in enumerate(counts):
+        weight = round(pallet.gross_weight_kg * count / total, 1)
+        result.append(Pallet(
+            id=f"{pallet.id}-part{i + 1}",
+            sku=pallet.sku,
+            boxes=count,
+            gross_weight_kg=weight,
+        ))
+    return result
 
 def _bootstrap(layout: WarehouseLayout) -> dict[str, Pallet]:
     """
@@ -110,10 +127,13 @@ def _simulate_day(
             PALLETS_PER_INBOUND_EVENT_MIN,
             PALLETS_PER_INBOUND_EVENT_MAX,
         )
-        pallets = [
+        base_pallets = [
             _make_pallet(f"P-{d.strftime('%Y%m%d')}-{i:02d}", j, rng)
             for j in range(n_pallets)
         ]
+        pallets: list[Pallet] = []
+        for p in base_pallets:
+            pallets.extend(_split_pallet(p))
         inbound_events.append(
             InboundEvent(event_id=i, time=event_time, pallets=pallets)
         )
