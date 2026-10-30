@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "date": "2026-10-30",
+  "seed": 20261030,
+  "inbound": [
+    {
+      "event_id": 1,
+      "time": "08:30:00",
+      "pallets": [
+        {
+          "id": "P-20261030-01-000",
+          "sku": "N015",
+          "boxes": 29,
+          "gross_weight_kg": 333.6,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R05-L01-B05"
+        },
+        {
+          "id": "P-20261030-01-001",
+          "sku": "N027",
+          "boxes": 13,
+          "gross_weight_kg": 613.7,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R07-L02-B01"
+        },
+        {
+          "id": "P-20261030-01-002",
+          "sku": "N034",
+          "boxes": 30,
+          "gross_weight_kg": 692.2,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "2F-R10-L01-B04"
+        },
+        {
+          "id": "P-20261030-01-003-part1",
+          "sku": "N041",
+          "boxes": 18,
+          "gross_weight_kg": 167.8,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R05-L02-B05"
+        },
+        {
+          "id": "P-20261030-01-003-part2",
+          "sku": "N041",
+          "boxes": 2,
+          "gross_weight_kg": 18.6,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "2F-R08-L02-B04"
+        }
+      ]
+    },
+    {
+      "event_id": 2,
+      "time": "13:26:00",
+      "pallets": [
+        {
+          "id": "P-20261030-02-000",
+          "sku": "N043",
+          "boxes": 16,
+          "gross_weight_kg": 212.3,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "2F-R10-L02-B01"
+        },
+        {
+          "id": "P-20261030-02-001",
+          "sku": "N002",
+          "boxes": 21,
+          "gross_weight_kg": 198.8,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R05-L02-B01"
+        }
+      ]
+    },
+    {
+      "event_id": 3,
+      "time": "14:58:00",
+      "pallets": [
+        {
+          "id": "P-20261030-03-000",
+          "sku": "N029",
+          "boxes": 29,
+          "gross_weight_kg": 391.5,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "B1-R03-L01-B02"
+        },
+        {
+          "id": "P-20261030-03-001",
+          "sku": "N021",
+          "boxes": 14,
+          "gross_weight_kg": 783.9,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "B1-R03-L02-B04"
+        },
+        {
+          "id": "P-20261030-03-002",
+          "sku": "N031",
+          "boxes": 22,
+          "gross_weight_kg": 375.1,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "2F-R10-L02-B04"
+        },
+        {
+          "id": "P-20261030-03-003-part1",
+          "sku": "N050",
+          "boxes": 18,
+          "gross_weight_kg": 152.7,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R06-L01-B04"
+        },
+        {
+          "id": "P-20261030-03-003-part2",
+          "sku": "N050",
+          "boxes": 9,
+          "gross_weight_kg": 76.3,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "B1-R02-L01-B02"
+        }
+      ]
+    },
+    {
+      "event_id": 4,
+      "time": "12:19:00",
+      "pallets": [
+        {
+          "id": "P-20261030-04-000",
+          "sku": "N025",
+          "boxes": 29,
+          "gross_weight_kg": 524.8,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R07-L02-B02"
+        },
+        {
+          "id": "P-20261030-04-001",
+          "sku": "N010",
+          "boxes": 32,
+          "gross_weight_kg": 231.2,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R06-L01-B03"
+        },
+        {
+          "id": "P-20261030-04-002",
+          "sku": "N030",
+          "boxes": 14,
+          "gross_weight_kg": 226.5,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "2F-R09-L02-B04"
+        },
+        {
+          "id": "P-20261030-04-003",
+          "sku": "N017",
+          "boxes": 27,
+          "gross_weight_kg": 498.8,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "B1-R03-L01-B03"
+        }
+      ]
+    },
+    {
+      "event_id": 5,
+      "time": "12:46:00",
+      "pallets": [
+        {
+          "id": "P-20261030-05-000-part1",
+          "sku": "N037",
+          "boxes": 24,
+          "gross_weight_kg": 112.7,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "1F-R07-L01-B02"
+        },
+        {
+          "id": "P-20261030-05-000-part2",
+          "sku": "N037",
+          "boxes": 10,
+          "gross_weight_kg": 46.9,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "2F-R08-L01-B01"
+        },
+        {
+          "id": "P-20261030-05-001",
+          "sku": "N031",
+          "boxes": 19,
+          "gross_weight_kg": 151.0,
+          "length_cm": 120,
+          "width_cm": 100,
+          "height_cm": 145,
+          "slot_id": "2F-R08-L01-B04"
+        }
+      ]
+    }
+  ],
+  "outbound": [
+    {
+      "event_id": 1,
+      "time": "10:12:00",
+      "pallet_ids": [
+        "P-20261023-03-003-part1",
+        "P-20261025-05-001",
+        "P-20261029-05-001-part1",
+        "P-20261028-01-000-part1"
+      ]
+    },
+    {
+      "event_id": 2,
+      "time": "10:18:00",
+      "pallet_ids": [
+        "P-20261023-04-002",
+        "P-20261026-04-000-part1",
+        "P-20261029-04-003",
+        "P-20261027-02-002"
+      ]
+    },
+    {
+      "event_id": 3,
+      "time": "13:26:00",
+      "pallet_ids": [
+        "P-20261029-02-002",
+        "P-20261029-03-001",
+        "P-20261029-04-001",
+        "P-20261026-04-000-part2"
+      ]
+    },
+    {
+      "event_id": 4,
+      "time": "11:57:00",
+      "pallet_ids": [
+        "P-20261028-01-000-part2",
+        "P-20261029-01-003",
+        "P-20261027-02-000"
+      ]
+    },
+    {
+      "event_id": 5,
+      "time": "13:23:00",
+      "pallet_ids": [
+        "P-20261015-04-003",
+        "P-20261024-02-001",
+        "P-20261029-01-001-part1"
+      ]
+    }
+  ]
+}
