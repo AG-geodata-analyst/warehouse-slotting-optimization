@@ -2,6 +2,10 @@
 
 > A decision-support system that combines SKU inventory records, packaging specifications, pallet constraints, rack-slot availability, and whole-pallet movement history to recommend feasible pallet configurations, allocate new pallets to suitable slots, and identify existing storage assignments worth relocating.
 
+**🔗 Live Demo: [ag-geodata-analyst.github.io/warehouse-slotting-optimization](https://ag-geodata-analyst.github.io/warehouse-slotting-optimization/)**
+
+![Warehouse Viewer Demo](docs/demo.png)
+
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![Pydantic 2](https://img.shields.io/badge/pydantic-2-E92063.svg)](https://docs.pydantic.dev/)
 [![Status](https://img.shields.io/badge/status-v1.0%20release-brightgreen.svg)](#-roadmap)
