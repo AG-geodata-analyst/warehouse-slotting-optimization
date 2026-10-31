@@ -3,6 +3,7 @@ import { loadLayout, loadBootstrap, loadManifest, loadAllDays } from './data';
 import { buildTimeline, analyzeMovement, type WarehouseState } from './replay';
 import { analyzePlacement, computeSkuVelocity } from './slotting';
 import { openPanel, closePanel, bindPanelEvents, isPanelOpen } from './detail-panel';
+import { initKpiPanel, precomputeKpis, updateKpiPanel } from './kpi-panel';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('canvas#scene not found');
@@ -114,6 +115,9 @@ async function init(): Promise<void> {
       `[viewer] SKU velocity computed for ${skuVelocity.size} SKUs (full ${days.length}-day window)`,
     );
 
+    initKpiPanel();
+    precomputeKpis(timeline, layout, skuVelocity);
+
     if (daySlider) {
       daySlider.min = '0';
       daySlider.max = String(days.length - 1);
@@ -158,6 +162,7 @@ async function init(): Promise<void> {
 
       if (isPanelOpen()) closePanel();
       handle.focusPallet(null);
+      updateKpiPanel(index);
     };
 
     if (dayControls) dayControls.style.display = 'flex';
