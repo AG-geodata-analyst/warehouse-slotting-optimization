@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  test-python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,10 +17,29 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run pytest
         run: pytest warehouse/tests -v
+
+  test-viewer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: viewer/package-lock.json
+
+      - name: Install viewer dependencies
+        working-directory: viewer
+        run: npm ci
+
+      - name: Run vitest
+        working-directory: viewer
+        run: npm run test
