@@ -4,7 +4,7 @@
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![Pydantic 2](https://img.shields.io/badge/pydantic-2-E92063.svg)](https://docs.pydantic.dev/)
-[![Status](https://img.shields.io/badge/status-v0.1%20in%20progress-yellow.svg)](#-roadmap)
+[![Status](https://img.shields.io/badge/status-v1.0%20release-brightgreen.svg)](#-roadmap)
 
 ---
 
@@ -70,13 +70,28 @@ Three.js 3D viewer  (GitHub Pages)
 | **v0.1** | Data model, 100-slot layout, deterministic day generator | ✅ |
 | **v0.2** | GitHub Actions scheduled simulation (daily commit) | ✅ |
 | **v0.3** | Three.js 3D viewer (100 slots, 30 days) | ✅ |
-| **v0.4** | Movement story (pallet age colouring, fast-mover highlight) | ✅ |
-| **v0.5** | Palletization module (box → pallet configuration viewer) | ⏳ |
-| **v0.6** | Slotting recommendations overlay (top-3 candidate slots) | ✅ |
-| **v1.0** | KPIs, tests, docs | ⏳ |
-| **v2.0** | Backend for user-submitted what-if scenarios | ⏳ |
+| **v0.4** | Movement story (pallet age symbols, fast-mover highlight, play-month) | ✅ |
+| **v0.5** | Palletization viewer — 3 stacking patterns, box view toggle, side panel inspector | ✅ |
+| **v0.6** | ABC placement quality (good / wasted / misplaced) + stranded KPI + click-to-focus | ✅ |
+| **v1.0** | KPIs dashboard, test suite, docs refresh, polish | ⏳ |
+| **v2.0** | Backend for user-submitted what-if scenarios | 🚫 out of scope |
 
 ---
+
+## 👀 What you're looking at
+
+The live demo is deployed at **https://ag-geodata-analyst.github.io/warehouse-slotting-optimization/**.
+
+- **Blocks view** (default) — one solid block per pallet, coloured by its floor (blue = B1, green = 1F, amber = 2F) or by placement quality when the toggle is on
+- **Boxes view** — same pallets rendered as individual boxes according to the winning stacking pattern (Pinwheel / Split-Block / Column)
+- **Quality mode** — green = pallet tier matches slot tier, amber = wasted (slow mover in a prime slot), red = misplaced (fast mover far from dispatch)
+- **Age symbols** — ● 0–7 days · ▲ 8–14 days · ✕ 15+ days
+- **Click any pallet** — camera zooms in, siblings of the same delivery stay bright, the rest dim; side panel shows the 3D stacking preview, SKU, weight, age, and quality
+- **HUD** — day slider, ▶ Play month, and the KPI line: `% A-placed · avg distance · would move · stranded`
+- **Cyan marker at (0, 0)** — the dispatch origin every "avg distance" is measured from
+
+---
+
 
 ## 🚀 Quick start
 
