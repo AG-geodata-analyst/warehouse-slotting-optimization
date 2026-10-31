@@ -97,16 +97,30 @@ export function precomputeKpis(
   cached = { occupancyTrend, strandedTrend, qualityPerDay, floorTrend, patternTrend };
 }
 
+/**
+ * Position the panel just below the HUD. The HUD height varies with the
+ * legend (quality mode adds several lines), so a hardcoded top would
+ * overlap. Called on every day change and on window resize.
+ */
+function repositionBelowHud(): void {
+  if (!panelEl) return;
+  const hud = document.getElementById('hud');
+  if (!hud) return;
+  const rect = hud.getBoundingClientRect();
+  panelEl.style.top = `${rect.bottom + 12}px`;
+  panelEl.style.maxHeight = `calc(100vh - ${rect.bottom + 32}px)`;
+}
+
 export function initKpiPanel(): void {
   if (panelEl) return;
 
   panelEl = document.createElement('div');
   panelEl.id = 'kpi-panel';
   panelEl.style.cssText =
-    'position:fixed;left:20px;top:200px;width:320px;' +
+    'position:fixed;left:20px;top:100px;width:320px;' +
     'background:rgba(20,20,20,0.95);border:1px solid #2a2a2a;border-radius:6px;' +
     'color:#eee;font-family:system-ui,sans-serif;font-size:12px;z-index:90;' +
-    'max-height:calc(100vh - 220px);overflow-y:auto;' +
+    'max-height:calc(100vh - 240px);overflow-y:auto;' +
     'box-shadow:0 4px 12px rgba(0,0,0,0.5);';
 
   const header = document.createElement('div');
@@ -114,7 +128,7 @@ export function initKpiPanel(): void {
     'padding:10px 14px;cursor:pointer;user-select:none;' +
     'display:flex;justify-content:space-between;align-items:center;' +
     'border-bottom:1px solid #2a2a2a;font-weight:600;';
-  header.innerHTML = '<span>📊 KPIs</span><span id="kpi-caret">▾</span>';
+  header.innerHTML = '<span>📊 Key Performance Indicators</span><span id="kpi-caret">▾</span>';
   panelEl.appendChild(header);
 
   bodyEl = document.createElement('div');
@@ -129,6 +143,8 @@ export function initKpiPanel(): void {
     const caret = document.getElementById('kpi-caret');
     if (caret) caret.textContent = isExpanded ? '▾' : '▸';
   });
+
+  window.addEventListener('resize', repositionBelowHud);
 }
 
 function sparkline(values: number[], currentIdx: number, color: string): string {
@@ -168,7 +184,12 @@ function section(title: string, body: string): string {
 }
 
 export function updateKpiPanel(currentIndex: number): void {
-  if (!panelEl || !bodyEl || !cached || !isExpanded) return;
+  if (!panelEl || !bodyEl || !cached) return;
+
+  // Reposition below the HUD on every update (HUD height varies with legend)
+  repositionBelowHud();
+
+  if (!isExpanded) return;
 
   const c = cached;
   const occupancy = c.occupancyTrend;
